@@ -1,7 +1,6 @@
 package rpc
 
 import (
-	"errors"
 	"github.com/obnahsgnaw/application"
 	"github.com/obnahsgnaw/application/endtype"
 	"github.com/obnahsgnaw/application/pkg/logging/logger"
@@ -31,7 +30,7 @@ type Server struct {
 	pServer   application.Server // 依附的上级服务 如api 或 tcp...
 	logger    *zap.Logger
 	manager   *rpc.Manager
-	err       error
+	errs      []error
 }
 
 // ServiceInfo rpc service provider
@@ -41,6 +40,7 @@ type ServiceInfo struct {
 }
 
 func New(app *application.Application, id, name string, et endtype.EndType, host url.Host, options ...Option) *Server {
+	var err error
 	s := &Server{
 		id:      id,
 		name:    name,
@@ -50,7 +50,16 @@ func New(app *application.Application, id, name string, et endtype.EndType, host
 		app:     app,
 		manager: rpc.NewManager(),
 	}
-	s.logger, s.err = logger.New(utils.ToStr("Rpc[", s.et.String(), "-", id, "]"), s.app.LogConfig(), s.app.Debugger().Debug())
+	if s.id == "" || s.name == "" {
+		s.addErr(s.err("id or name invalid", nil))
+	}
+
+	if s.host.Port == 0 || s.host.Ip == "" {
+		s.addErr(s.err("host invalid", nil))
+	}
+	s.logger, err = logger.New(utils.ToStr("Rpc[", s.et.String(), "][", id, "]"), s.app.LogConfig(), s.app.Debugger().Debug())
+	s.addErr(err)
+
 	s.regInfo = &regCenter.RegInfo{
 		AppId:   s.app.ID(),
 		RegType: regtype.Rpc,
@@ -128,57 +137,48 @@ func (s *Server) RegisterService(provider ServiceInfo) {
 // Release resource
 func (s *Server) Release() {
 	if s.RegEnabled() {
-		s.debug("unregister")
 		_ = s.app.DoUnregister(s.regInfo)
 	}
-	s.debug("release rpc")
 	s.manager.Release()
-	s.debug("release logger")
 	_ = s.logger.Sync()
+	s.debug("released")
 }
 
 // Run server
 func (s *Server) Run(failedCb func(error)) {
-	if s.id == "" || s.name == "" {
-		failedCb(errors.New(s.msg("id or name invalid")))
+	if len(s.errs) > 0 {
+		failedCb(s.errs[0])
 		return
 	}
-	if s.err != nil {
-		failedCb(s.err)
-		return
-	}
-	if s.host.Port == 0 || s.host.Ip == "" {
-		failedCb(errors.New(s.msg("host invalid")))
-		return
-	}
+	s.logger.Info("start running...")
 	ss, err := rpc.NewServer(s.host.Port)
 	if err != nil {
-		failedCb(utils.NewWrappedError(s.msg("new server failed"), err))
+		failedCb(s.err("new server failed", err))
 		return
 	}
 	s.server = ss
 	for _, sp := range s.services {
 		s.server.Register(&sp.Desc, sp.Impl)
-		s.debug("registered service:" + sp.Desc.ServiceName)
+		s.debug(utils.ToStr("rpc service[", sp.Desc.ServiceName, "] registered"))
 	}
 
 	if s.app.Register() != nil {
 		if s.RegEnabled() {
 			if err = s.app.DoRegister(s.regInfo); err != nil {
-				failedCb(utils.NewWrappedError(s.msg("register failed"), err))
+				failedCb(s.err("register failed", err))
 				return
 			}
 		}
 		if err = s.watch(s.app.Register()); err != nil {
-			failedCb(utils.NewWrappedError(s.msg("watch failed"), err))
+			failedCb(s.err("watch failed", err))
 			return
 		}
 	}
 
-	s.logger.Info(utils.ToStr("rpc[", s.host.String(), "] listen and serving..."))
 	s.server.SyncStart(func(err error) {
-		failedCb(errors.New(s.msg("run failed, err=" + err.Error())))
+		failedCb(s.err("run failed, err="+err.Error(), nil))
 	})
+	s.logger.Info(utils.ToStr("rpc server[", s.host.String(), "] listen and serving..."))
 }
 
 func (s *Server) watch(register regCenter.Register) (err error) {
@@ -186,7 +186,7 @@ func (s *Server) watch(register regCenter.Register) (err error) {
 	if s.regEnable {
 		prefix := s.regInfo.Prefix()
 		if prefix == "" {
-			return errors.New("reg key prefix is empty")
+			return s.err("reg key prefix is empty", nil)
 		}
 		return register.Watch(s.app.Context(), prefix, func(key string, val string, isDel bool) {
 			segments := strings.Split(key, "/")
@@ -204,12 +204,18 @@ func (s *Server) watch(register regCenter.Register) (err error) {
 	return
 }
 
-func (s *Server) msg(msg ...string) string {
-	return utils.ToStr("Rpc Server[", s.name, "] ", utils.ToStr(msg...))
+func (s *Server) err(msg string, err error) error {
+	return utils.TitledError(utils.ToStr("rpc server[", s.name, "] error"), msg, err)
 }
 
 func (s *Server) debug(msg string) {
 	if s.app.Debugger().Debug() {
 		s.logger.Debug(msg)
+	}
+}
+
+func (s *Server) addErr(err error) {
+	if err != nil {
+		s.errs = append(s.errs, err)
 	}
 }
