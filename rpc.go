@@ -136,7 +136,7 @@ func (s *Server) RegisterService(provider ServiceInfo) {
 
 // Release resource
 func (s *Server) Release() {
-	if s.RegEnabled() {
+	if s.RegEnabled() && s.app.Register() != nil {
 		_ = s.app.DoUnregister(s.regInfo)
 	}
 	s.manager.Release()
