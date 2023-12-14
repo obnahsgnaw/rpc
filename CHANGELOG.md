@@ -1,4 +1,12 @@
 
+<a name="v0.4.3"></a>
+## [v0.4.3](https://8.140.161.172/wangsb/wgateway/compare/v0.4.2...v0.4.3) (2023-12-14)
+
+### Bug Fixes
+
+* **log:** fix rpc log
+
+
 <a name="v0.4.2"></a>
 ## [v0.4.2](https://8.140.161.172/wangsb/wgateway/compare/v0.4.1...v0.4.2) (2023-09-29)
 
