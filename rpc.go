@@ -135,6 +135,11 @@ func (s *Server) Logger() *zap.Logger {
 	return s.logger
 }
 
+// LogConfig return
+func (s *Server) LogConfig() *logger.Config {
+	return s.logCnf
+}
+
 // RegisterService register a rcp service
 func (s *Server) RegisterService(provider ServiceInfo) {
 	s.services = append(s.services, provider)
