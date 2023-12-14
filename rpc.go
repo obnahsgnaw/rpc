@@ -12,6 +12,7 @@ import (
 	"github.com/obnahsgnaw/rpc/pkg/rpc"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+	"path/filepath"
 	"strings"
 )
 
@@ -29,6 +30,7 @@ type Server struct {
 	regInfo   *regCenter.RegInfo
 	pServer   application.Server // 依附的上级服务 如api 或 tcp...
 	logger    *zap.Logger
+	logCnf    *logger.Config
 	manager   *rpc.Manager
 	errs      []error
 }
@@ -57,7 +59,11 @@ func New(app *application.Application, id, name string, et endtype.EndType, host
 	if s.host.Port == 0 || s.host.Ip == "" {
 		s.addErr(s.err("host invalid", nil))
 	}
-	s.logger, err = logger.New(utils.ToStr("Rpc[", s.et.String(), "][", id, "]"), s.app.LogConfig(), s.app.Debugger().Debug())
+	s.logCnf = logger.CopyCnfWithLevel(s.app.LogConfig())
+	if s.logCnf != nil {
+		s.logCnf.AddSubDir(filepath.Join("rpc", s.name))
+	}
+	s.logger, err = logger.New("", s.logCnf, s.app.Debugger().Debug())
 	s.addErr(err)
 
 	s.regInfo = &regCenter.RegInfo{
@@ -150,7 +156,7 @@ func (s *Server) Run(failedCb func(error)) {
 		failedCb(s.errs[0])
 		return
 	}
-	s.logger.Info("start running...")
+	s.logger.Info("starting...")
 	ss, err := rpc.NewServer(s.host.Port)
 	if err != nil {
 		failedCb(s.err("new server failed", err))
@@ -159,7 +165,7 @@ func (s *Server) Run(failedCb func(error)) {
 	s.server = ss
 	for _, sp := range s.services {
 		s.server.Register(&sp.Desc, sp.Impl)
-		s.debug(utils.ToStr("rpc service[", sp.Desc.ServiceName, "] registered"))
+		s.debug(utils.ToStr("service[", sp.Desc.ServiceName, "] registered"))
 	}
 
 	if s.app.Register() != nil {
@@ -178,7 +184,7 @@ func (s *Server) Run(failedCb func(error)) {
 	s.server.SyncStart(func(err error) {
 		failedCb(s.err("run failed, err="+err.Error(), nil))
 	})
-	s.logger.Info(utils.ToStr("rpc server[", s.host.String(), "] listen and serving..."))
+	s.logger.Info(utils.ToStr("service[", s.host.String(), "] listen and serving..."))
 }
 
 func (s *Server) watch(register regCenter.Register) (err error) {
