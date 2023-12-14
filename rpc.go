@@ -61,7 +61,7 @@ func New(app *application.Application, id, name string, et endtype.EndType, host
 	}
 	s.logCnf = logger.CopyCnfWithLevel(s.app.LogConfig())
 	if s.logCnf != nil {
-		s.logCnf.AddSubDir(filepath.Join("rpc", s.name))
+		s.logCnf.AddSubDir(filepath.Join(s.et.String(), s.st.String(), s.id))
 	}
 	s.logger, err = logger.New("", s.logCnf, s.app.Debugger().Debug())
 	s.addErr(err)
@@ -151,8 +151,10 @@ func (s *Server) Release() {
 		_ = s.app.DoUnregister(s.regInfo)
 	}
 	s.manager.Release()
-	_ = s.logger.Sync()
-	s.debug("released")
+	if s.logger != nil {
+		s.logger.Info("released")
+		_ = s.logger.Sync()
+	}
 }
 
 // Run server
@@ -161,35 +163,43 @@ func (s *Server) Run(failedCb func(error)) {
 		failedCb(s.errs[0])
 		return
 	}
-	s.logger.Info("starting...")
-	ss, err := rpc.NewServer(s.host.Port)
-	if err != nil {
+	s.logger.Info("rpc init starting...")
+
+	if ss, err := rpc.NewServer(s.host.Port); err != nil {
 		failedCb(s.err("new server failed", err))
 		return
+	} else {
+		s.server = ss
 	}
-	s.server = ss
 	for _, sp := range s.services {
 		s.server.Register(&sp.Desc, sp.Impl)
-		s.debug(utils.ToStr("service[", sp.Desc.ServiceName, "] registered"))
+		s.logger.Debug(utils.ToStr("service[", sp.Desc.ServiceName, "] registered"))
 	}
+	if len(s.services) == 0 {
+		s.logger.Warn("no service registered")
+	}
+	s.logger.Info("services initialized")
 
 	if s.app.Register() != nil {
 		if s.RegEnabled() {
-			if err = s.app.DoRegister(s.regInfo); err != nil {
+			if err := s.app.DoRegister(s.regInfo); err != nil {
 				failedCb(s.err("register failed", err))
 				return
 			}
+			s.logger.Debug("server registered")
 		}
-		if err = s.watch(s.app.Register()); err != nil {
+		if err := s.watch(s.app.Register()); err != nil {
 			failedCb(s.err("watch failed", err))
 			return
 		}
+		s.logger.Debug("server watch started")
 	}
-
+	s.logger.Info("register initialized")
+	s.logger.Info("rpc initialized")
 	s.server.SyncStart(func(err error) {
 		failedCb(s.err("run failed, err="+err.Error(), nil))
 	})
-	s.logger.Info(utils.ToStr("service[", s.host.String(), "] listen and serving..."))
+	s.logger.Info(utils.ToStr("rpc server[", s.host.String(), "] listen and serving..."))
 }
 
 func (s *Server) watch(register regCenter.Register) (err error) {
@@ -204,10 +214,10 @@ func (s *Server) watch(register regCenter.Register) (err error) {
 			module := segments[len(segments)-2]
 			addr := segments[len(segments)-1]
 			if isDel {
-				s.debug(utils.ToStr("rpc[", module, "] leaved"))
+				s.logger.Debug(utils.ToStr("rpc[", module, "] leaved"))
 				s.manager.Rm(rpc.Module(module), addr)
 			} else {
-				s.debug(utils.ToStr("rpc[", module, "] added"))
+				s.logger.Debug(utils.ToStr("rpc[", module, "] added"))
 				s.manager.Add(rpc.Module(module), addr)
 			}
 		})
@@ -217,12 +227,6 @@ func (s *Server) watch(register regCenter.Register) (err error) {
 
 func (s *Server) err(msg string, err error) error {
 	return utils.TitledError(utils.ToStr("rpc server[", s.name, "] error"), msg, err)
-}
-
-func (s *Server) debug(msg string) {
-	if s.app.Debugger().Debug() {
-		s.logger.Debug(msg)
-	}
 }
 
 func (s *Server) addErr(err error) {
