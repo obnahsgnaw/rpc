@@ -6,6 +6,7 @@ import (
 	"github.com/obnahsgnaw/application/pkg/logging/logger"
 	"github.com/obnahsgnaw/application/pkg/url"
 	"github.com/obnahsgnaw/rpc"
+	"time"
 )
 
 func main() {
@@ -23,6 +24,7 @@ func main() {
 		Level:      "debug",
 		TraceLevel: "error",
 	}))
+	app.With(application.EtcdRegister([]string{"127.0.0.1:2379"}, time.Second*5))
 
 	s := rpc.New(app, "auth", "auth", endtype.Backend, url.Host{Ip: "127.0.0.1", Port: 7001})
 
