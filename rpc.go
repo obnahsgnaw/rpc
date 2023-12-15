@@ -62,10 +62,11 @@ func New(app *application.Application, id, name string, et endtype.EndType, host
 	}
 	s.logCnf = logger.CopyCnfWithLevel(s.app.LogConfig())
 	if s.logCnf != nil {
-		s.logCnf.AddSubDir(filepath.Join(s.et.String(), s.id+"-rpc"))
+		s.logCnf.AddSubDir(filepath.Join(s.et.String(), "rpc-"+s.id))
 		s.logCnf.SetMinTraceLevel(zap.FatalLevel)
+		s.logCnf.SetFilename(s.id)
 	}
-	s.logger, err = logger.New("rpc", s.logCnf, s.app.Debugger().Debug())
+	s.logger, err = logger.New(utils.ToStr("rpc:", s.et.String(), "-", s.id), s.logCnf, s.app.Debugger().Debug())
 	s.addErr(err)
 
 	s.regInfo = &regCenter.RegInfo{
@@ -165,14 +166,14 @@ func (s *Server) Run(failedCb func(error)) {
 		failedCb(s.errs[0])
 		return
 	}
-	s.logger.Info(utils.ToStr("rpc[", s.name, "] init starting..."))
+	s.logger.Info("init starting...")
 
 	s.server = rpc.NewServer(s.host.Port)
 	s.server.RegisterAfterHandler(func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, resp interface{}, err error) {
 		if err != nil {
-			s.logger.Error("rpc call error, err=" + err.Error())
+			s.logger.Error(err.Error())
 		} else {
-			s.logger.Debug("rpc request:", zap.Any("req", req), zap.Any("resp", resp))
+			s.logger.Debug("rpc request", zap.Any("req", req), zap.Any("resp", resp))
 		}
 	})
 	for _, sp := range s.services {
@@ -199,11 +200,11 @@ func (s *Server) Run(failedCb func(error)) {
 		s.logger.Debug("server watch started")
 	}
 	s.logger.Info("register initialized")
-	s.logger.Info("rpc initialized")
+	s.logger.Info("initialized")
 	s.server.SyncStart(func(err error) {
 		failedCb(s.err("run failed, err="+err.Error(), nil))
 	})
-	s.logger.Info(utils.ToStr("rpc server[", s.host.String(), "] listen and serving..."))
+	s.logger.Info(utils.ToStr("server[", s.host.String(), "] listen and serving..."))
 }
 
 func (s *Server) watch(register regCenter.Register) (err error) {
