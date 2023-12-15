@@ -1,6 +1,7 @@
 package rpc
 
 import (
+	"context"
 	"github.com/obnahsgnaw/application"
 	"github.com/obnahsgnaw/application/endtype"
 	"github.com/obnahsgnaw/application/pkg/logging/logger"
@@ -61,9 +62,10 @@ func New(app *application.Application, id, name string, et endtype.EndType, host
 	}
 	s.logCnf = logger.CopyCnfWithLevel(s.app.LogConfig())
 	if s.logCnf != nil {
-		s.logCnf.AddSubDir(filepath.Join(s.et.String(), s.st.String(), s.id))
+		s.logCnf.AddSubDir(filepath.Join(s.et.String(), s.id+"-rpc"))
+		s.logCnf.SetMinTraceLevel(zap.FatalLevel)
 	}
-	s.logger, err = logger.New("", s.logCnf, s.app.Debugger().Debug())
+	s.logger, err = logger.New("rpc", s.logCnf, s.app.Debugger().Debug())
 	s.addErr(err)
 
 	s.regInfo = &regCenter.RegInfo{
@@ -163,14 +165,16 @@ func (s *Server) Run(failedCb func(error)) {
 		failedCb(s.errs[0])
 		return
 	}
-	s.logger.Info("rpc init starting...")
+	s.logger.Info(utils.ToStr("rpc[", s.name, "] init starting..."))
 
-	if ss, err := rpc.NewServer(s.host.Port); err != nil {
-		failedCb(s.err("new server failed", err))
-		return
-	} else {
-		s.server = ss
-	}
+	s.server = rpc.NewServer(s.host.Port)
+	s.server.RegisterAfterHandler(func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, resp interface{}, err error) {
+		if err != nil {
+			s.logger.Error("rpc call error, err=" + err.Error())
+		} else {
+			s.logger.Debug("rpc request:", zap.Any("req", req), zap.Any("resp", resp))
+		}
+	})
 	for _, sp := range s.services {
 		s.server.Register(&sp.Desc, sp.Impl)
 		s.logger.Debug(utils.ToStr("service[", sp.Desc.ServiceName, "] registered"))

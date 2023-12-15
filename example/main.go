@@ -10,7 +10,7 @@ import (
 )
 
 func main() {
-	app := application.New(application.NewCluster("dev", "Dev"), "RpcDemo")
+	app := application.New(application.NewCluster("dev", "Dev"), "demo")
 	defer app.Release()
 
 	app.With(application.Debug(func() bool {
