@@ -12,6 +12,6 @@ func RegEnable() Option {
 func Parent(p application.Server) Option {
 	return func(s *Server) {
 		s.pServer = p
-		s.regInfo.ServerInfo.Type = p.Type().String()
+		s.regInfos[s.id].ServerInfo.Type = p.Type().String()
 	}
 }
