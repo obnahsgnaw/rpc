@@ -63,7 +63,7 @@ func New(app *application.Application, id, name string, et endtype.EndType, host
 	s.logCnf = logger.CopyCnfWithLevel(s.app.LogConfig())
 	if s.logCnf != nil {
 		s.logCnf.AddSubDir(filepath.Join(s.et.String(), "rpc-"+s.id))
-		s.logCnf.SetMinTraceLevel(zap.FatalLevel)
+		s.logCnf.ReplaceTraceLevel(zap.NewAtomicLevelAt(zap.FatalLevel))
 		s.logCnf.SetFilename(s.id)
 	}
 	s.logger, err = logger.New(utils.ToStr("rpc:", s.et.String(), "-", s.id), s.logCnf, s.app.Debugger().Debug())
