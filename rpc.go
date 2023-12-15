@@ -28,7 +28,7 @@ type Server struct {
 	services  []ServiceInfo
 	app       *application.Application
 	regEnable bool
-	regInfo   *regCenter.RegInfo
+	regInfos  map[string]*regCenter.RegInfo
 	pServer   application.Server // 依附的上级服务 如api 或 tcp...
 	logger    *zap.Logger
 	logCnf    *logger.Config
@@ -45,13 +45,14 @@ type ServiceInfo struct {
 func New(app *application.Application, id, name string, et endtype.EndType, host url.Host, options ...Option) *Server {
 	var err error
 	s := &Server{
-		id:      id,
-		name:    name,
-		st:      servertype.Rpc,
-		et:      et,
-		host:    host,
-		app:     app,
-		manager: rpc.NewManager(),
+		id:       id,
+		name:     name,
+		st:       servertype.Rpc,
+		et:       et,
+		host:     host,
+		app:      app,
+		manager:  rpc.NewManager(),
+		regInfos: make(map[string]*regCenter.RegInfo),
 	}
 	if s.id == "" || s.name == "" {
 		s.addErr(s.err("id or name invalid", nil))
@@ -69,13 +70,24 @@ func New(app *application.Application, id, name string, et endtype.EndType, host
 	s.logger, err = logger.New(utils.ToStr("rpc:", s.et.String(), "-", s.id), s.logCnf, s.app.Debugger().Debug())
 	s.addErr(err)
 
-	s.regInfo = &regCenter.RegInfo{
+	s.AddRegInfo(id, name, s.pServer)
+	s.With(options...)
+	return s
+}
+
+// AddRegInfo 添加注册信息，多个服务用一个rpc时， 当然得同一个 endtype
+func (s *Server) AddRegInfo(id, name string, parent application.Server) {
+	st := s.st.String()
+	if parent != nil {
+		st = parent.Type().String()
+	}
+	s.regInfos[id] = &regCenter.RegInfo{
 		AppId:   s.app.ID(),
 		RegType: regtype.Rpc,
 		ServerInfo: regCenter.ServerInfo{
-			Id:      s.id,
-			Name:    s.name,
-			Type:    s.st.String(),
+			Id:      id,
+			Name:    name,
+			Type:    st,
 			EndType: s.et.String(),
 		},
 		Host:      s.host.String(),
@@ -83,8 +95,6 @@ func New(app *application.Application, id, name string, et endtype.EndType, host
 		Ttl:       s.app.RegTtl(),
 		KeyPreGen: regCenter.DefaultRegKeyPrefixGenerator(),
 	}
-	s.With(options...)
-	return s
 }
 
 func (s *Server) With(options ...Option) {
@@ -124,8 +134,8 @@ func (s *Server) RegEnabled() bool {
 }
 
 // RegInfo return the server register info
-func (s *Server) RegInfo() *regCenter.RegInfo {
-	return s.regInfo
+func (s *Server) RegInfo() map[string]*regCenter.RegInfo {
+	return s.regInfos
 }
 
 // Manager return rpc manager
@@ -151,7 +161,9 @@ func (s *Server) RegisterService(provider ServiceInfo) {
 // Release resource
 func (s *Server) Release() {
 	if s.RegEnabled() && s.app.Register() != nil {
-		_ = s.app.DoUnregister(s.regInfo)
+		for _, info := range s.regInfos {
+			_ = s.app.DoUnregister(info)
+		}
 	}
 	s.manager.Release()
 	if s.logger != nil {
@@ -187,9 +199,12 @@ func (s *Server) Run(failedCb func(error)) {
 
 	if s.app.Register() != nil {
 		if s.RegEnabled() {
-			if err := s.app.DoRegister(s.regInfo); err != nil {
-				failedCb(s.err("register failed", err))
-				return
+			for id, info := range s.regInfos {
+				if err := s.app.DoRegister(info); err != nil {
+					failedCb(s.err("register failed", err))
+					return
+				}
+				s.logger.Debug("server[" + id + "] registered")
 			}
 			s.logger.Debug("server registered")
 		}
@@ -210,7 +225,7 @@ func (s *Server) Run(failedCb func(error)) {
 func (s *Server) watch(register regCenter.Register) (err error) {
 	// watch rpc
 	if s.regEnable {
-		prefix := s.regInfo.Prefix()
+		prefix := s.regInfos[s.id].Prefix()
 		if prefix == "" {
 			return s.err("reg key prefix is empty", nil)
 		}
