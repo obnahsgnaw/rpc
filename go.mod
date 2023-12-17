@@ -3,7 +3,7 @@ module github.com/obnahsgnaw/rpc
 go 1.19
 
 require (
-	github.com/obnahsgnaw/application v0.15.15
+	github.com/obnahsgnaw/application v0.15.16
 	go.uber.org/zap v1.23.0
 	google.golang.org/grpc v1.55.0
 )
