@@ -1,6 +1,7 @@
 package rpc
 
 import (
+	"context"
 	"errors"
 	"github.com/obnahsgnaw/application/pkg/utils"
 	"google.golang.org/grpc"
@@ -22,10 +23,16 @@ func (m Module) String() string {
 	return string(m)
 }
 
+type BfInterceptor func(ctx context.Context, method string, req interface{}, cc *grpc.ClientConn, opts ...grpc.CallOption) error
+
+type AfHandler func(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, err error, opts ...grpc.CallOption)
+
 // Manager rpc server addr manager
 type Manager struct {
 	sync.Mutex
-	addrMap map[Module]Addr
+	addrMap            map[Module]Addr
+	beforeInterceptors []BfInterceptor
+	afterHandlers      []AfHandler
 }
 
 // NewManager return a new addr manager
@@ -100,6 +107,14 @@ func (m *Manager) GetConn(module Module, addr string, tag int) (*grpc.ClientConn
 	return nil, errors.New("not found")
 }
 
+func (m *Manager) RegisterBeforeInterceptor(interceptor BfInterceptor) {
+	m.beforeInterceptors = append(m.beforeInterceptors, interceptor)
+}
+
+func (m *Manager) RegisterAfterHandler(h AfHandler) {
+	m.afterHandlers = append(m.afterHandlers, h)
+}
+
 func (m *Manager) newClient(server string) (*grpc.ClientConn, error) {
 	return grpc.Dial(
 		server,
@@ -109,7 +124,20 @@ func (m *Manager) newClient(server string) (*grpc.ClientConn, error) {
 				Time:                100 * time.Second,
 				Timeout:             20 * time.Second,
 				PermitWithoutStream: true,
-			}),
+			},
+		),
+		grpc.WithUnaryInterceptor(func(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+			for _, h := range m.beforeInterceptors {
+				if err := h(ctx, method, req, cc, opts...); err != nil {
+					return err
+				}
+			}
+			err := invoker(ctx, method, req, reply, cc, opts...)
+			for _, h := range m.afterHandlers {
+				h(ctx, method, req, reply, cc, err, opts...)
+			}
+			return err
+		}),
 	)
 }
 
