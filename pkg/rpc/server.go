@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/obnahsgnaw/application/pkg/utils"
+	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"log"
 	"net"
@@ -19,6 +20,7 @@ type Server struct {
 	beforeHandlers []func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo) error
 	afterHandlers  []func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, resp interface{}, err error)
 	services       []rpcService
+	logger         *zap.Logger
 }
 type rpcService struct {
 	desc grpc.ServiceDesc
@@ -26,12 +28,13 @@ type rpcService struct {
 }
 
 // NewServer return rpc server instance
-func NewServer(port int) *Server {
+func NewServer(port int, l *zap.Logger) *Server {
 	return &Server{
 		listener: nil,
 		s:        nil,
 		port:     port,
 		protocol: "tcp",
+		logger:   l,
 	}
 }
 
@@ -46,13 +49,12 @@ func (rs *Server) init() (err error) {
 	}
 
 	rs.s = grpc.NewServer(grpc.UnaryInterceptor(func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
-		defer func() {
-			if err1 := recover(); err1 != nil {
-				err = errors.New("rpc middleware error")
-				fmt.Printf("%v \n", err1)
-				return
+		defer utils.RecoverHandler("handle", func(err1, stack string) {
+			err = errors.New("handle failed, err=" + err1)
+			if rs.logger != nil {
+				rs.logger.Error("handle failed, err=" + err1 + ", stack=" + stack)
 			}
-		}()
+		})
 		for _, h := range rs.beforeHandlers {
 			if err = h(ctx, req, info); err != nil {
 				return

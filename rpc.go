@@ -57,21 +57,30 @@ func New(app *application.Application, id, name string, et endtype.EndType, host
 	if s.id == "" || s.name == "" {
 		s.addErr(s.err("id or name invalid", nil))
 	}
-
 	if s.host.Port == 0 || s.host.Ip == "" {
 		s.addErr(s.err("host invalid", nil))
 	}
+	s.With(options...)
 	s.logCnf = logger.CopyCnfWithLevel(s.app.LogConfig())
 	if s.logCnf != nil {
-		s.logCnf.AddSubDir(filepath.Join(s.et.String(), "rpc-"+s.id))
+		if s.pServer != nil {
+			s.logCnf.AddSubDir(filepath.Join(s.et.String(), utils.ToStr(s.pServer.Type().String(), "-", s.pServer.ID()), utils.ToStr(s.st.String(), "-", s.id)))
+		} else {
+			s.logCnf.AddSubDir(filepath.Join(s.et.String(), utils.ToStr(s.st.String(), "-", s.id)))
+		}
 		s.logCnf.ReplaceTraceLevel(zap.NewAtomicLevelAt(zap.FatalLevel))
-		s.logCnf.SetFilename(s.id)
+		s.logCnf.SetFilename(utils.ToStr(s.st.String(), "-", s.id))
 	}
-	s.logger, err = logger.New(utils.ToStr("rpc:", s.et.String(), "-", s.id), s.logCnf, s.app.Debugger().Debug())
+	s.logger, err = logger.New(utils.ToStr(s.st.String(), ":", s.et.String(), "-", s.id), s.logCnf, s.app.Debugger().Debug())
 	s.addErr(err)
-
+	s.manager.RegisterAfterHandler(func(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, err error, opts ...grpc.CallOption) {
+		if err != nil {
+			s.logger.Error(utils.ToStr("rpc call[", method, "] failed, ", err.Error()), zap.Any("req", req), zap.Any("resp", reply))
+		} else {
+			s.logger.Debug(utils.ToStr("rpc call[", method, "] success"), zap.Any("req", req), zap.Any("resp", reply))
+		}
+	})
 	s.AddRegInfo(id, name, s.pServer)
-	s.With(options...)
 	return s
 }
 
@@ -162,7 +171,11 @@ func (s *Server) RegisterService(provider ServiceInfo) {
 func (s *Server) Release() {
 	if s.RegEnabled() && s.app.Register() != nil {
 		for _, info := range s.regInfos {
-			_ = s.app.DoUnregister(info)
+			_ = s.app.DoUnregister(info, func(msg string) {
+				if s.logger != nil {
+					s.logger.Debug(msg)
+				}
+			})
 		}
 	}
 	s.manager.Release()
@@ -180,14 +193,15 @@ func (s *Server) Run(failedCb func(error)) {
 	}
 	s.logger.Info("init starting...")
 
-	s.server = rpc.NewServer(s.host.Port)
+	s.server = rpc.NewServer(s.host.Port, s.logger)
 	s.server.RegisterAfterHandler(func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, resp interface{}, err error) {
 		if err != nil {
-			s.logger.Error(err.Error())
+			s.logger.Error(utils.ToStr("rpc serve[", info.FullMethod, "] failed, ", err.Error()), zap.Any("req", req), zap.Any("resp", resp))
 		} else {
-			s.logger.Debug("rpc request", zap.Any("req", req), zap.Any("resp", resp))
+			s.logger.Debug(utils.ToStr("rpc serve[", info.FullMethod, "] success"), zap.Any("req", req), zap.Any("resp", resp))
 		}
 	})
+
 	for _, sp := range s.services {
 		s.server.Register(&sp.Desc, sp.Impl)
 		s.logger.Debug(utils.ToStr("service[", sp.Desc.ServiceName, "] registered"))
@@ -199,20 +213,23 @@ func (s *Server) Run(failedCb func(error)) {
 
 	if s.app.Register() != nil {
 		if s.RegEnabled() {
+			s.logger.Debug("server register start...")
 			for id, info := range s.regInfos {
-				if err := s.app.DoRegister(info); err != nil {
+				if err := s.app.DoRegister(info, func(msg string) {
+					s.logger.Debug(msg)
+				}); err != nil {
 					failedCb(s.err("register failed", err))
 					return
 				}
 				s.logger.Debug("server[" + id + "] registered")
 			}
-			s.logger.Debug("server registered")
+			s.logger.Debug("server register initialized")
 		}
+		s.logger.Debug("server watch started")
 		if err := s.watch(s.app.Register()); err != nil {
 			failedCb(s.err("watch failed", err))
 			return
 		}
-		s.logger.Debug("server watch started")
 	}
 	s.logger.Info("register initialized")
 	s.logger.Info("initialized")
