@@ -36,6 +36,11 @@ type Server struct {
 	errs      []error
 }
 
+type PortedRpc struct {
+	s    *Server
+	host url.Host
+}
+
 // ServiceInfo rpc service provider
 type ServiceInfo struct {
 	Desc grpc.ServiceDesc
@@ -165,6 +170,13 @@ func (s *Server) LogConfig() *logger.Config {
 // RegisterService register a rcp service
 func (s *Server) RegisterService(provider ServiceInfo) {
 	s.services = append(s.services, provider)
+}
+
+func (s *Server) Ported() *PortedRpc {
+	return &PortedRpc{
+		s:    s,
+		host: s.Host(),
+	}
 }
 
 // Release resource
