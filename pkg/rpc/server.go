@@ -3,8 +3,8 @@ package rpc
 import (
 	"context"
 	"errors"
-	"fmt"
 	"github.com/obnahsgnaw/application/pkg/utils"
+	"github.com/obnahsgnaw/rpc/pkg/portedlistener"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"log"
@@ -15,7 +15,6 @@ import (
 type Server struct {
 	listener       net.Listener
 	s              *grpc.Server
-	protocol       string
 	port           int
 	beforeHandlers []func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo) error
 	afterHandlers  []func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, resp interface{}, err error)
@@ -33,7 +32,15 @@ func NewServer(port int, l *zap.Logger) *Server {
 		listener: nil,
 		s:        nil,
 		port:     port,
-		protocol: "tcp",
+		logger:   l,
+	}
+}
+
+func NewListenerServer(listener *portedlistener.PortedListener, l *zap.Logger) *Server {
+	return &Server{
+		listener: listener.Listener(),
+		s:        nil,
+		port:     listener.Port(),
 		logger:   l,
 	}
 }
@@ -43,9 +50,15 @@ func (rs *Server) Register(desc *grpc.ServiceDesc, serv interface{}) {
 	rs.services = append(rs.services, rpcService{desc: *desc, serv: serv})
 }
 
+func (rs *Server) Listener() net.Listener {
+	return rs.listener
+}
+
 func (rs *Server) init() (err error) {
-	if rs.listener, err = net.Listen("tcp", utils.ToStr(":", strconv.Itoa(rs.port))); err != nil {
-		return err
+	if rs.listener == nil {
+		if rs.listener, err = net.Listen("tcp", utils.ToStr(":", strconv.Itoa(rs.port))); err != nil {
+			return err
+		}
 	}
 
 	rs.s = grpc.NewServer(grpc.UnaryInterceptor(func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
@@ -106,7 +119,7 @@ func (rs *Server) Close() {
 
 // Addr return rpc addr
 func (rs *Server) Addr() string {
-	return fmt.Sprintf("%s:%d", rs.protocol, rs.port)
+	return "tcp:" + strconv.Itoa(rs.port)
 }
 
 // Port return rpc port

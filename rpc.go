@@ -10,9 +10,11 @@ import (
 	"github.com/obnahsgnaw/application/regtype"
 	"github.com/obnahsgnaw/application/servertype"
 	"github.com/obnahsgnaw/application/service/regCenter"
+	"github.com/obnahsgnaw/rpc/pkg/portedlistener"
 	"github.com/obnahsgnaw/rpc/pkg/rpc"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+	"net"
 	"path/filepath"
 	"strings"
 )
@@ -33,6 +35,7 @@ type Server struct {
 	logger    *zap.Logger
 	logCnf    *logger.Config
 	manager   *rpc.Manager
+	listener  net.Listener
 	errs      []error
 }
 
@@ -42,14 +45,13 @@ type ServiceInfo struct {
 	Impl interface{}
 }
 
-func New(app *application.Application, id, name string, et endtype.EndType, host url.Host, options ...Option) *Server {
+func New(app *application.Application, id, name string, et endtype.EndType, options ...Option) *Server {
 	var err error
 	s := &Server{
 		id:       id,
 		name:     name,
 		st:       servertype.Rpc,
 		et:       et,
-		host:     host,
 		app:      app,
 		manager:  rpc.NewManager(),
 		regInfos: make(map[string]*regCenter.RegInfo),
@@ -57,10 +59,15 @@ func New(app *application.Application, id, name string, et endtype.EndType, host
 	if s.id == "" || s.name == "" {
 		s.addErr(s.err("id or name invalid", nil))
 	}
+	s.With(options...)
 	if s.host.Port == 0 || s.host.Ip == "" {
 		s.addErr(s.err("host invalid", nil))
 	}
-	s.With(options...)
+	if s.listener != nil {
+		s.server = rpc.NewListenerServer(portedlistener.New(s.listener, s.host), s.logger)
+	} else {
+		s.server = rpc.NewServer(s.host.Port, s.logger)
+	}
 	s.logCnf = logger.CopyCnfWithLevel(s.app.LogConfig())
 	if s.logCnf != nil {
 		if s.pServer != nil {
@@ -137,6 +144,10 @@ func (s *Server) Host() url.Host {
 	return s.host
 }
 
+func (s *Server) Listener() *portedlistener.PortedListener {
+	return portedlistener.New(s.listener, s.host)
+}
+
 // RegEnabled reg enabled
 func (s *Server) RegEnabled() bool {
 	return s.regEnable
@@ -193,7 +204,6 @@ func (s *Server) Run(failedCb func(error)) {
 	}
 	s.logger.Info("init starting...")
 
-	s.server = rpc.NewServer(s.host.Port, s.logger)
 	s.server.RegisterAfterHandler(func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, resp interface{}, err error) {
 		if err != nil {
 			s.logger.Error(utils.ToStr("rpc serve[", info.FullMethod, "] failed, ", err.Error()), zap.Any("req", req), zap.Any("resp", resp))
