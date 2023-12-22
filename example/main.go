@@ -34,6 +34,7 @@ func main() {
 		"auth",
 		endtype.Backend,
 		url.Host{Ip: "127.0.0.1", Port: 7001},
+		nil,
 	)
 	app.AddServer(s)
 	app.Run(func(err error) {

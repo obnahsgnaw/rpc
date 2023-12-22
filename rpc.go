@@ -28,7 +28,6 @@ type Server struct {
 	endType    endtype.EndType
 	listener   *listener.PortedListener
 	server     *rpcserver.Server
-	pServer    application.Server // 依附的上级服务 如api 或 tcp...
 	logger     *zap.Logger
 	logCnf     *logger.Config
 	manager    *rpcclient.Manager
@@ -38,13 +37,18 @@ type Server struct {
 	errs       []error
 }
 
+type PServer struct {
+	Id  string
+	Typ servertype.ServerType
+}
+
 // ServiceInfo rpc service provider
 type ServiceInfo struct {
 	Desc grpc.ServiceDesc
 	Impl interface{}
 }
 
-func New(app *application.Application, id, name string, et endtype.EndType, lr *listener.PortedListener, options ...Option) *Server {
+func New(app *application.Application, id, name string, et endtype.EndType, lr *listener.PortedListener, ps *PServer, options ...Option) *Server {
 	var err error
 	s := &Server{
 		id:         id,
@@ -61,8 +65,8 @@ func New(app *application.Application, id, name string, et endtype.EndType, lr *
 	}
 	s.logCnf = logger.CopyCnfWithLevel(s.app.LogConfig())
 	if s.logCnf != nil {
-		if s.pServer != nil {
-			s.logCnf.AddSubDir(filepath.Join(s.endType.String(), utils.ToStr(s.pServer.Type().String(), "-", s.pServer.ID()), utils.ToStr(s.serverType.String(), "-", s.id)))
+		if ps != nil {
+			s.logCnf.AddSubDir(filepath.Join(s.endType.String(), utils.ToStr(ps.Typ.String(), "-", ps.Id), utils.ToStr(s.serverType.String(), "-", s.id)))
 		} else {
 			s.logCnf.AddSubDir(filepath.Join(s.endType.String(), utils.ToStr(s.serverType.String(), "-", s.id)))
 		}
@@ -80,15 +84,15 @@ func New(app *application.Application, id, name string, et endtype.EndType, lr *
 			s.logger.Debug(utils.ToStr("rpc call[", method, "] success"), zap.Any("req", req), zap.Any("resp", reply))
 		}
 	})
-	s.AddRegInfo(id, name, s.pServer)
+	s.AddRegInfo(id, name, ps)
 	return s
 }
 
-func Default(app *application.Application, id, name string, et endtype.EndType, host url.Host, options ...Option) (*Server, error) {
+func Default(app *application.Application, id, name string, et endtype.EndType, host url.Host, ps *PServer, options ...Option) (*Server, error) {
 	if l, err := listener.Default(host); err != nil {
 		return nil, err
 	} else {
-		return New(app, id, name, et, l, options...), nil
+		return New(app, id, name, et, l, ps, options...), nil
 	}
 }
 
@@ -196,10 +200,10 @@ func (s *Server) Listener() *listener.PortedListener {
 }
 
 // AddRegInfo 添加注册信息，多个服务用一个rpc时， 当然得同一个 endtype
-func (s *Server) AddRegInfo(id, name string, parent application.Server) {
+func (s *Server) AddRegInfo(id, name string, parent *PServer) {
 	st := s.serverType.String()
 	if parent != nil {
-		st = parent.Type().String()
+		st = parent.Typ.String()
 	}
 	s.regInfos[id] = &regCenter.RegInfo{
 		AppId:   s.app.ID(),
