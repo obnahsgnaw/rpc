@@ -1,4 +1,12 @@
 
+<a name="v0.5.4"></a>
+## [v0.5.4](https://8.140.161.172/wangsb/wgateway/compare/v0.5.3...v0.5.4) (2023-12-22)
+
+### Bug Fixes
+
+* **all:** fix rpc and server
+
+
 <a name="v0.5.3"></a>
 ## [v0.5.3](https://8.140.161.172/wangsb/wgateway/compare/v0.5.2...v0.5.3) (2023-12-22)
 
