@@ -22,8 +22,8 @@ func Parent(ps *PServer) Option {
 	}
 }
 
-func IgLrClose() Option {
+func IgLrClose(ig bool) Option {
 	return func(s *Server) {
-		s.lrIgClose = true
+		s.lrIgClose = ig
 	}
 }
