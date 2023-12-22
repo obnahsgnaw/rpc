@@ -21,3 +21,9 @@ func Parent(ps *PServer) Option {
 		s.pServer = ps
 	}
 }
+
+func IgLrClose() Option {
+	return func(s *Server) {
+		s.lrIgClose = true
+	}
+}

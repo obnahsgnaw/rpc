@@ -27,9 +27,20 @@ func main() {
 		application.EtcdRegister([]string{"127.0.0.1:2379"}, time.Second*5),
 	)
 	defer app.Release()
+
 	l, _ := rpc.NewListener(url.Host{Ip: "127.0.0.1", Port: 7001})
-	defer l.Listener().Close()
-	s := rpc.New(app, "auth", "auth", endtype.Backend, l)
+	defer l.Close()
+
+	s := rpc.New(
+		app,
+		l,
+		"auth",
+		"auth",
+		endtype.Backend,
+		//rpc.RegEnable(),
+		//rpc.Parent(rpc.NewPServer("", "")),
+		//rpc.IgLrClose(),
+	)
 	app.AddServer(s)
 	app.Run(func(err error) {
 		panic(err)
