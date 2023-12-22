@@ -1,4 +1,12 @@
 
+<a name="v0.5.6"></a>
+## [v0.5.6](https://8.140.161.172/wangsb/wgateway/compare/v0.5.5...v0.5.6) (2023-12-22)
+
+### Bug Fixes
+
+* **x:** x
+
+
 <a name="v0.5.5"></a>
 ## [v0.5.5](https://8.140.161.172/wangsb/wgateway/compare/v0.5.4...v0.5.5) (2023-12-22)
 
