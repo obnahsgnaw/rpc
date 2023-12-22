@@ -35,11 +35,7 @@ type Server struct {
 	regInfos   map[string]*regCenter.RegInfo
 	errs       []error
 	regAble    bool
-}
-
-type PServer struct {
-	Id  string
-	Typ servertype.ServerType
+	lrIgClose  bool
 }
 
 // ServiceInfo rpc service provider
@@ -48,7 +44,7 @@ type ServiceInfo struct {
 	Impl interface{}
 }
 
-func New(app *application.Application, id, name string, et endtype.EndType, lr *listener.PortedListener, options ...Option) *Server {
+func New(app *application.Application, lr *listener.PortedListener, id, name string, et endtype.EndType, options ...Option) *Server {
 	s := &Server{
 		id:         id,
 		name:       name,
@@ -62,7 +58,7 @@ func New(app *application.Application, id, name string, et endtype.EndType, lr *
 	}
 	with(s, options...)
 	s.initLogger()
-	s.server = rpcserver.New(lr, s.logger)
+	s.server = rpcserver.New(lr, s.logger, s.lrIgClose)
 	s.server.RegisterAfterHandler(func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, resp interface{}, err error) {
 		if err != nil {
 			s.logger.Error(utils.ToStr("rpc serve[", info.FullMethod, "] failed, ", err.Error()), zap.Any("req", req), zap.Any("resp", resp))
@@ -80,10 +76,6 @@ func New(app *application.Application, id, name string, et endtype.EndType, lr *
 	})
 	s.AddRegInfo(id, name, s.pServer)
 	return s
-}
-
-func NewListener(host url.Host) (*listener.PortedListener, error) {
-	return listener.Default(host)
 }
 
 // ID return the server id
@@ -181,7 +173,7 @@ func (s *Server) Listener() *listener.PortedListener {
 func (s *Server) AddRegInfo(id, name string, parent *PServer) {
 	st := s.serverType.String()
 	if parent != nil {
-		st = parent.Typ.String()
+		st = parent.st.String()
 	}
 	s.regInfos[id] = &regCenter.RegInfo{
 		AppId:   s.app.ID(),
@@ -263,7 +255,7 @@ func (s *Server) initLogCnf() {
 	s.logCnf = logger.CopyCnfWithLevel(s.app.LogConfig())
 	if s.logCnf != nil {
 		if s.pServer != nil {
-			s.logCnf.AddSubDir(filepath.Join(s.endType.String(), utils.ToStr(s.pServer.Typ.String(), "-", s.pServer.Id), utils.ToStr(s.serverType.String(), "-", s.id)))
+			s.logCnf.AddSubDir(filepath.Join(s.endType.String(), utils.ToStr(s.pServer.st.String(), "-", s.pServer.id), utils.ToStr(s.serverType.String(), "-", s.id)))
 		} else {
 			s.logCnf.AddSubDir(filepath.Join(s.endType.String(), utils.ToStr(s.serverType.String(), "-", s.id)))
 		}

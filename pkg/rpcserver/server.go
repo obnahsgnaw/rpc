@@ -14,6 +14,7 @@ import (
 type Server struct {
 	server             *grpc.Server
 	listener           *listener.PortedListener
+	listenerIgClose    bool
 	logger             *zap.Logger
 	beforeInterceptors []func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo) error
 	afterHandlers      []func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, resp interface{}, err error)
@@ -25,11 +26,12 @@ type rpcService struct {
 	serv interface{}
 }
 
-func New(lr *listener.PortedListener, l *zap.Logger) *Server {
+func New(lr *listener.PortedListener, l *zap.Logger, igLrClose bool) *Server {
 	s := &Server{
-		listener: lr,
-		server:   nil,
-		logger:   l,
+		listener:        lr,
+		server:          nil,
+		logger:          l,
+		listenerIgClose: igLrClose,
 	}
 	s.server = grpc.NewServer(grpc.UnaryInterceptor(func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
 		defer utils.RecoverHandler("handle", func(err1, stack string) {
@@ -90,6 +92,9 @@ func (s *Server) SyncStart(cb func(err error)) {
 func (s *Server) Close() {
 	if s.server != nil {
 		s.server.Stop()
+		if !s.listenerIgClose {
+			_ = s.listener.Listener().Close()
+		}
 	}
 
 	log.Println("Server closed.")
