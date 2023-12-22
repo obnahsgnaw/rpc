@@ -1,4 +1,4 @@
-package rpc
+package rpcclient
 
 import (
 	"context"
@@ -11,28 +11,16 @@ import (
 	"time"
 )
 
-type Addr map[string]map[int]*grpc.ClientConn
+type BeforeInterceptor func(ctx context.Context, method string, req interface{}, cc *grpc.ClientConn, opts ...grpc.CallOption) error
 
-func (a Addr) Add(server string) {
-	a[server] = make(map[int]*grpc.ClientConn)
-}
-
-type Module string
-
-func (m Module) String() string {
-	return string(m)
-}
-
-type BfInterceptor func(ctx context.Context, method string, req interface{}, cc *grpc.ClientConn, opts ...grpc.CallOption) error
-
-type AfHandler func(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, err error, opts ...grpc.CallOption)
+type AfterHandler func(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, err error, opts ...grpc.CallOption)
 
 // Manager rpc server addr manager
 type Manager struct {
 	sync.Mutex
 	addrMap            map[Module]Addr
-	beforeInterceptors []BfInterceptor
-	afterHandlers      []AfHandler
+	beforeInterceptors []BeforeInterceptor
+	afterHandlers      []AfterHandler
 }
 
 // NewManager return a new addr manager
@@ -107,11 +95,11 @@ func (m *Manager) GetConn(module Module, addr string, tag int) (*grpc.ClientConn
 	return nil, errors.New("not found")
 }
 
-func (m *Manager) RegisterBeforeInterceptor(interceptor BfInterceptor) {
+func (m *Manager) RegisterBeforeInterceptor(interceptor BeforeInterceptor) {
 	m.beforeInterceptors = append(m.beforeInterceptors, interceptor)
 }
 
-func (m *Manager) RegisterAfterHandler(h AfHandler) {
+func (m *Manager) RegisterAfterHandler(h AfterHandler) {
 	m.afterHandlers = append(m.afterHandlers, h)
 }
 
