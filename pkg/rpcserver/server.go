@@ -3,7 +3,6 @@ package rpcserver
 import (
 	"context"
 	"errors"
-	"github.com/obnahsgnaw/application/pkg/url"
 	"github.com/obnahsgnaw/application/pkg/utils"
 	"github.com/obnahsgnaw/http/listener"
 	"go.uber.org/zap"
@@ -13,13 +12,12 @@ import (
 )
 
 type Server struct {
-	listener       *listener.PortedListener
-	server         *grpc.Server
-	beforeHandlers []func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo) error
-	afterHandlers  []func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, resp interface{}, err error)
-	services       []rpcService
-	logger         *zap.Logger
-	insideListener bool
+	server             *grpc.Server
+	listener           *listener.PortedListener
+	logger             *zap.Logger
+	beforeInterceptors []func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo) error
+	afterHandlers      []func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, resp interface{}, err error)
+	services           []rpcService
 }
 
 type rpcService struct {
@@ -40,7 +38,7 @@ func New(lr *listener.PortedListener, l *zap.Logger) *Server {
 				s.logger.Error("handle failed, err=" + err1 + ", stack=" + stack)
 			}
 		})
-		for _, h := range s.beforeHandlers {
+		for _, h := range s.beforeInterceptors {
 			if err = h(ctx, req, info); err != nil {
 				return
 			}
@@ -54,16 +52,6 @@ func New(lr *listener.PortedListener, l *zap.Logger) *Server {
 	return s
 }
 
-func Default(host url.Host, l *zap.Logger) (*Server, error) {
-	if lr, err := listener.Default(host); err != nil {
-		return nil, err
-	} else {
-		s := New(lr, l)
-		s.insideListener = true
-		return s, nil
-	}
-}
-
 func (s *Server) Register(desc *grpc.ServiceDesc, serv interface{}) {
 	s.services = append(s.services, rpcService{desc: *desc, serv: serv})
 }
@@ -74,7 +62,7 @@ func (s *Server) Listener() *listener.PortedListener {
 
 func (s *Server) RegisterBeforeInterceptor(i func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo) error) {
 	if i != nil {
-		s.beforeHandlers = append(s.beforeHandlers)
+		s.beforeInterceptors = append(s.beforeInterceptors)
 	}
 }
 
@@ -102,9 +90,6 @@ func (s *Server) SyncStart(cb func(err error)) {
 func (s *Server) Close() {
 	if s.server != nil {
 		s.server.Stop()
-		if s.insideListener {
-			_ = s.listener.Listener().Close()
-		}
 	}
 
 	log.Println("Server closed.")

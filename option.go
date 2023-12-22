@@ -2,8 +2,22 @@ package rpc
 
 type Option func(s *Server)
 
+func with(s *Server, options ...Option) {
+	for _, o := range options {
+		if o != nil {
+			o(s)
+		}
+	}
+}
+
 func RegEnable() Option {
 	return func(s *Server) {
-		s.regEnable = true
+		s.regAble = true
+	}
+}
+
+func Parent(ps *PServer) Option {
+	return func(s *Server) {
+		s.pServer = ps
 	}
 }

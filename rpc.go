@@ -21,20 +21,20 @@ import (
 
 // Server RPC server
 type Server struct {
-	id         string // 模块
+	id         string
 	name       string
 	app        *application.Application
-	serverType servertype.ServerType
 	endType    endtype.EndType
-	listener   *listener.PortedListener
+	serverType servertype.ServerType
 	server     *rpcserver.Server
+	manager    *rpcclient.Manager
 	logger     *zap.Logger
 	logCnf     *logger.Config
-	manager    *rpcclient.Manager
+	pServer    *PServer
 	services   []ServiceInfo
-	regEnable  bool
 	regInfos   map[string]*regCenter.RegInfo
 	errs       []error
+	regAble    bool
 }
 
 type PServer struct {
@@ -48,35 +48,29 @@ type ServiceInfo struct {
 	Impl interface{}
 }
 
-func New(app *application.Application, id, name string, et endtype.EndType, lr *listener.PortedListener, ps *PServer, options ...Option) *Server {
-	var err error
+func New(app *application.Application, id, name string, et endtype.EndType, lr *listener.PortedListener, options ...Option) *Server {
 	s := &Server{
 		id:         id,
 		name:       name,
 		app:        app,
-		serverType: servertype.Rpc,
 		endType:    et,
-		listener:   lr,
-		manager:    rpcclient.NewManager(),
+		serverType: servertype.Rpc,
 		regInfos:   make(map[string]*regCenter.RegInfo),
 	}
 	if s.id == "" || s.name == "" {
 		s.addErr(s.err("id or name invalid", nil))
 	}
-	s.logCnf = logger.CopyCnfWithLevel(s.app.LogConfig())
-	if s.logCnf != nil {
-		if ps != nil {
-			s.logCnf.AddSubDir(filepath.Join(s.endType.String(), utils.ToStr(ps.Typ.String(), "-", ps.Id), utils.ToStr(s.serverType.String(), "-", s.id)))
+	with(s, options...)
+	s.initLogger()
+	s.server = rpcserver.New(lr, s.logger)
+	s.server.RegisterAfterHandler(func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, resp interface{}, err error) {
+		if err != nil {
+			s.logger.Error(utils.ToStr("rpc serve[", info.FullMethod, "] failed, ", err.Error()), zap.Any("req", req), zap.Any("resp", resp))
 		} else {
-			s.logCnf.AddSubDir(filepath.Join(s.endType.String(), utils.ToStr(s.serverType.String(), "-", s.id)))
+			s.logger.Debug(utils.ToStr("rpc serve[", info.FullMethod, "] success"), zap.Any("req", req), zap.Any("resp", resp))
 		}
-		s.logCnf.ReplaceTraceLevel(zap.NewAtomicLevelAt(zap.FatalLevel))
-		s.logCnf.SetFilename(utils.ToStr(s.serverType.String(), "-", s.id))
-	}
-	s.logger, err = logger.New(utils.ToStr(s.serverType.String(), ":", s.endType.String(), "-", s.id), s.logCnf, s.app.Debugger().Debug())
-	s.addErr(err)
-	s.With(options...)
-	s.server = rpcserver.New(s.listener, s.logger)
+	})
+	s.manager = rpcclient.NewManager()
 	s.manager.RegisterAfterHandler(func(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, err error, opts ...grpc.CallOption) {
 		if err != nil {
 			s.logger.Error(utils.ToStr("rpc call[", method, "] failed, ", err.Error()), zap.Any("req", req), zap.Any("resp", reply))
@@ -84,22 +78,12 @@ func New(app *application.Application, id, name string, et endtype.EndType, lr *
 			s.logger.Debug(utils.ToStr("rpc call[", method, "] success"), zap.Any("req", req), zap.Any("resp", reply))
 		}
 	})
-	s.AddRegInfo(id, name, ps)
+	s.AddRegInfo(id, name, s.pServer)
 	return s
 }
 
-func Default(app *application.Application, id, name string, et endtype.EndType, host url.Host, ps *PServer, options ...Option) (*Server, error) {
-	if l, err := listener.Default(host); err != nil {
-		return nil, err
-	} else {
-		return New(app, id, name, et, l, ps, options...), nil
-	}
-}
-
-func (s *Server) With(options ...Option) {
-	for _, o := range options {
-		o(s)
-	}
+func NewListener(host url.Host) (*listener.PortedListener, error) {
+	return listener.Default(host)
 }
 
 // ID return the server id
@@ -112,14 +96,14 @@ func (s *Server) Name() string {
 	return s.name
 }
 
+// EndType return the server endtype
+func (s *Server) EndType() endtype.EndType {
+	return s.endType
+}
+
 // Type return the server type
 func (s *Server) Type() servertype.ServerType {
 	return s.serverType
-}
-
-// EndType return the server end type
-func (s *Server) EndType() endtype.EndType {
-	return s.endType
 }
 
 // Release resource
@@ -134,6 +118,7 @@ func (s *Server) Release() {
 		}
 	}
 	s.manager.Release()
+	s.server.Close()
 	if s.logger != nil {
 		s.logger.Info("released")
 		_ = s.logger.Sync()
@@ -147,13 +132,6 @@ func (s *Server) Run(failedCb func(error)) {
 		return
 	}
 	s.logger.Info("init starting...")
-	s.server.RegisterAfterHandler(func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, resp interface{}, err error) {
-		if err != nil {
-			s.logger.Error(utils.ToStr("rpc serve[", info.FullMethod, "] failed, ", err.Error()), zap.Any("req", req), zap.Any("resp", resp))
-		} else {
-			s.logger.Debug(utils.ToStr("rpc serve[", info.FullMethod, "] success"), zap.Any("req", req), zap.Any("resp", resp))
-		}
-	})
 	for _, sp := range s.services {
 		s.server.Register(&sp.Desc, sp.Impl)
 		s.logger.Debug(utils.ToStr("service[", sp.Desc.ServiceName, "] registered"))
@@ -192,11 +170,11 @@ func (s *Server) Run(failedCb func(error)) {
 
 // Host return the server host
 func (s *Server) Host() url.Host {
-	return s.listener.Host()
+	return s.server.Listener().Host()
 }
 
 func (s *Server) Listener() *listener.PortedListener {
-	return s.listener
+	return s.server.Listener()
 }
 
 // AddRegInfo 添加注册信息，多个服务用一个rpc时， 当然得同一个 endtype
@@ -214,8 +192,8 @@ func (s *Server) AddRegInfo(id, name string, parent *PServer) {
 			Type:    st,
 			EndType: s.endType.String(),
 		},
-		Host:      s.listener.Host().String(),
-		Val:       s.listener.Host().String(),
+		Host:      s.server.Listener().Host().String(),
+		Val:       s.server.Listener().Host().String(),
 		Ttl:       s.app.RegTtl(),
 		KeyPreGen: regCenter.DefaultRegKeyPrefixGenerator(),
 	}
@@ -223,7 +201,7 @@ func (s *Server) AddRegInfo(id, name string, parent *PServer) {
 
 // RegEnabled reg enabled
 func (s *Server) RegEnabled() bool {
-	return s.regEnable
+	return s.regAble
 }
 
 // RegInfo return the server register info
@@ -253,7 +231,7 @@ func (s *Server) RegisterService(provider ServiceInfo) {
 
 func (s *Server) watch(register regCenter.Register) (err error) {
 	// watch rpc
-	if s.regEnable {
+	if s.regAble {
 		prefix := s.regInfos[s.id].Prefix()
 		if prefix == "" {
 			return s.err("reg key prefix is empty", nil)
@@ -272,6 +250,26 @@ func (s *Server) watch(register regCenter.Register) (err error) {
 		})
 	}
 	return
+}
+
+func (s *Server) initLogger() {
+	var err error
+	s.initLogCnf()
+	s.logger, err = logger.New(utils.ToStr(s.serverType.String(), ":", s.endType.String(), "-", s.id), s.logCnf, s.app.Debugger().Debug())
+	s.addErr(err)
+}
+
+func (s *Server) initLogCnf() {
+	s.logCnf = logger.CopyCnfWithLevel(s.app.LogConfig())
+	if s.logCnf != nil {
+		if s.pServer != nil {
+			s.logCnf.AddSubDir(filepath.Join(s.endType.String(), utils.ToStr(s.pServer.Typ.String(), "-", s.pServer.Id), utils.ToStr(s.serverType.String(), "-", s.id)))
+		} else {
+			s.logCnf.AddSubDir(filepath.Join(s.endType.String(), utils.ToStr(s.serverType.String(), "-", s.id)))
+		}
+		s.logCnf.ReplaceTraceLevel(zap.NewAtomicLevelAt(zap.FatalLevel))
+		s.logCnf.SetFilename(utils.ToStr(s.serverType.String(), "-", s.id))
+	}
 }
 
 func (s *Server) err(msg string, err error) error {
