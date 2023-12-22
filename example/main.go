@@ -6,8 +6,6 @@ import (
 	"github.com/obnahsgnaw/application/pkg/logging/logger"
 	"github.com/obnahsgnaw/application/pkg/url"
 	"github.com/obnahsgnaw/rpc"
-	"github.com/obnahsgnaw/rpc/pkg/portedlistener"
-	"net"
 	"time"
 )
 
@@ -29,21 +27,17 @@ func main() {
 		application.EtcdRegister([]string{"127.0.0.1:2379"}, time.Second*5),
 	)
 	defer app.Release()
-	listener, _ := net.Listen("tcp", ":7001")
-	s := rpc.New(
+
+	s, _ := rpc.Default(
 		app,
 		"auth",
 		"auth",
 		endtype.Backend,
-		//rpc.Host(url.Host{Ip: "127.0.0.1", Port: 7001}),
-		rpc.Listener(portedlistener.New(listener, url.Host{Ip: "127.0.0.1", Port: 7001})),
+		url.Host{Ip: "127.0.0.1", Port: 7001},
 	)
-
 	app.AddServer(s)
-
 	app.Run(func(err error) {
 		panic(err)
 	})
-
 	app.Wait()
 }
