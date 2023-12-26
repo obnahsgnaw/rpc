@@ -76,7 +76,11 @@ func (s *Server) RegisterAfterHandler(h func(ctx context.Context, req interface{
 
 func (s *Server) Start() error {
 	s.init()
-	return s.server.Serve(s.listener.Listener())
+	l := s.listener.Listener()
+	if s.listenerIgClose {
+		l = newNoCl(l)
+	}
+	return s.server.Serve(l)
 }
 
 func (s *Server) SyncStart(cb func(err error)) {
@@ -92,9 +96,6 @@ func (s *Server) SyncStart(cb func(err error)) {
 func (s *Server) Close() {
 	if s.server != nil {
 		s.server.Stop()
-		if !s.listenerIgClose {
-			_ = s.listener.Listener().Close()
-		}
 	}
 
 	log.Println("Server closed.")
