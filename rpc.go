@@ -110,7 +110,6 @@ func (s *Server) Release() {
 		}
 	}
 	s.manager.Release()
-	s.server.Close()
 	if s.logger != nil {
 		s.logger.Info("released")
 		_ = s.logger.Sync()
