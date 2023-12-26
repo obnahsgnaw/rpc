@@ -7,7 +7,6 @@ import (
 	"github.com/obnahsgnaw/http/listener"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
-	"log"
 	"strconv"
 )
 
@@ -95,10 +94,8 @@ func (s *Server) SyncStart(cb func(err error)) {
 
 func (s *Server) Close() {
 	if s.server != nil {
-		s.server.Stop()
+		s.server.GracefulStop()
 	}
-
-	log.Println("Server closed.")
 }
 
 func (s *Server) Addr() string {
