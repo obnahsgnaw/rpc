@@ -1,4 +1,12 @@
 
+<a name="v0.5.8"></a>
+## [v0.5.8](https://8.140.161.172/wangsb/wgateway/compare/v0.5.7...v0.5.8) (2023-12-26)
+
+### Bug Fixes
+
+* **rpcclient:** fix rpccliet addr
+
+
 <a name="v0.5.7"></a>
 ## [v0.5.7](https://8.140.161.172/wangsb/wgateway/compare/v0.5.6...v0.5.7) (2023-12-26)
 
