@@ -29,7 +29,6 @@ func main() {
 	defer app.Release()
 
 	l, _ := rpc.NewListener(url.Host{Ip: "127.0.0.1", Port: 7001})
-	defer l.Close()
 
 	s := rpc.New(
 		app,
