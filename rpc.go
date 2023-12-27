@@ -28,6 +28,7 @@ type Server struct {
 	serverType servertype.ServerType
 	server     *rpcserver.Server
 	manager    *rpcclient.Manager
+	lr         *listener.PortedListener
 	logger     *zap.Logger
 	logCnf     *logger.Config
 	pServer    *PServer
@@ -36,6 +37,7 @@ type Server struct {
 	errs       []error
 	regAble    bool
 	lrIgClose  bool
+	lrIgServe  bool
 }
 
 // ServiceInfo rpc service provider
@@ -51,6 +53,7 @@ func New(app *application.Application, lr *listener.PortedListener, id, name str
 		app:        app,
 		endType:    et,
 		serverType: servertype.Rpc,
+		lr:         lr,
 		regInfos:   make(map[string]*regCenter.RegInfo),
 	}
 	if s.id == "" || s.name == "" {
@@ -58,7 +61,7 @@ func New(app *application.Application, lr *listener.PortedListener, id, name str
 	}
 	with(s, options...)
 	s.initLogger()
-	s.server = rpcserver.New(lr, s.logger, s.lrIgClose)
+	s.server = rpcserver.New(lr, s.logger)
 	s.server.RegisterAfterHandler(func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, resp interface{}, err error) {
 		if err != nil {
 			s.logger.Error(utils.ToStr("rpc serve[", info.FullMethod, "] failed, ", err.Error()), zap.Any("req", req), zap.Any("resp", resp))
@@ -156,6 +159,18 @@ func (s *Server) Run(failedCb func(error)) {
 	s.server.SyncStart(func(err error) {
 		failedCb(s.err("run failed, err="+err.Error(), nil))
 	})
+	if !s.lrIgServe {
+		go func() {
+			defer func() {
+				if !s.lrIgClose {
+					s.lr.Close()
+				}
+			}()
+			if err := s.lr.Serve(); err != nil {
+				failedCb(err)
+			}
+		}()
+	}
 	s.logger.Info(utils.ToStr("server[", s.Host().String(), "] listen and serving..."))
 }
 

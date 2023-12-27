@@ -4,7 +4,7 @@ go 1.19
 
 require (
 	github.com/obnahsgnaw/application v0.16.0
-	github.com/obnahsgnaw/http v0.1.1
+	github.com/obnahsgnaw/http v0.1.3
 	go.uber.org/zap v1.23.0
 	google.golang.org/grpc v1.55.0
 )
@@ -15,6 +15,7 @@ require (
 	github.com/coreos/go-systemd/v22 v22.3.2 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/protobuf v1.5.3 // indirect
+	github.com/soheilhy/cmux v0.1.5 // indirect
 	go.etcd.io/etcd/api/v3 v3.5.9 // indirect
 	go.etcd.io/etcd/client/pkg/v3 v3.5.9 // indirect
 	go.etcd.io/etcd/client/v3 v3.5.9 // indirect

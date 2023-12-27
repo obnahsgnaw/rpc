@@ -27,3 +27,9 @@ func IgLrClose(ig bool) Option {
 		s.lrIgClose = ig
 	}
 }
+
+func IgLrServe(ig bool) Option {
+	return func(s *Server) {
+		s.lrIgServe = ig
+	}
+}

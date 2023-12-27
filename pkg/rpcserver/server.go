@@ -13,7 +13,6 @@ import (
 type Server struct {
 	server             *grpc.Server
 	listener           *listener.PortedListener
-	listenerIgClose    bool
 	logger             *zap.Logger
 	beforeInterceptors []func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo) error
 	afterHandlers      []func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, resp interface{}, err error)
@@ -25,12 +24,11 @@ type rpcService struct {
 	serv interface{}
 }
 
-func New(lr *listener.PortedListener, l *zap.Logger, igLrClose bool) *Server {
+func New(lr *listener.PortedListener, l *zap.Logger) *Server {
 	s := &Server{
-		listener:        lr,
-		server:          nil,
-		logger:          l,
-		listenerIgClose: igLrClose,
+		listener: lr,
+		server:   nil,
+		logger:   l,
 	}
 	s.server = grpc.NewServer(grpc.UnaryInterceptor(func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
 		defer utils.RecoverHandler("handle", func(err1, stack string) {
@@ -75,10 +73,8 @@ func (s *Server) RegisterAfterHandler(h func(ctx context.Context, req interface{
 
 func (s *Server) Start() error {
 	s.init()
-	l := s.listener.Listener()
-	if s.listenerIgClose {
-		l = newNoCl(l)
-	}
+	l := s.listener.GrpcListener()
+	l = newNoCl(l)
 	return s.server.Serve(l)
 }
 
