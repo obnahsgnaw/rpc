@@ -15,7 +15,6 @@ import (
 	"github.com/obnahsgnaw/rpc/pkg/rpcserver"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
-	"path/filepath"
 	"strings"
 )
 
@@ -106,17 +105,13 @@ func (s *Server) Release() {
 	if s.RegEnabled() && s.app.Register() != nil {
 		for _, info := range s.regInfos {
 			_ = s.app.DoUnregister(info, func(msg string) {
-				if s.logger != nil {
-					s.logger.Debug(msg)
-				}
+				s.logger.Debug(msg)
 			})
 		}
 	}
 	s.manager.Release()
-	if s.logger != nil {
-		s.logger.Info("released")
-		_ = s.logger.Sync()
-	}
+	s.logger.Info("released")
+	_ = s.logger.Sync()
 }
 
 // Run server
@@ -259,23 +254,14 @@ func (s *Server) watch(register regCenter.Register) (err error) {
 }
 
 func (s *Server) initLogger() {
-	var err error
-	s.initLogCnf()
-	s.logger, err = logger.New(utils.ToStr(s.serverType.String(), ":", s.endType.String(), "-", s.id), s.logCnf, s.app.Debugger().Debug())
-	s.addErr(err)
-}
-
-func (s *Server) initLogCnf() {
-	s.logCnf = logger.CopyCnfWithLevel(s.app.LogConfig())
-	if s.logCnf != nil {
-		if s.pServer != nil {
-			s.logCnf.AddSubDir(filepath.Join(s.endType.String(), utils.ToStr(s.pServer.st.String(), "-", s.pServer.id), utils.ToStr(s.serverType.String(), "-", s.id)))
-		} else {
-			s.logCnf.AddSubDir(filepath.Join(s.endType.String(), utils.ToStr(s.serverType.String(), "-", s.id)))
-		}
-		s.logCnf.ReplaceTraceLevel(zap.NewAtomicLevelAt(zap.FatalLevel))
-		s.logCnf.SetFilename(utils.ToStr(s.serverType.String(), "-", s.id))
+	var name string
+	s.logCnf = s.app.LogConfig()
+	if s.pServer != nil {
+		name = utils.ToStr(s.pServer.st.String(), "-", s.endType.String(), "-", s.pServer.id)
+	} else {
+		name = utils.ToStr(s.serverType.String(), "-", s.endType.String(), "-", s.id)
 	}
+	s.logger = s.app.Logger().Named(name)
 }
 
 func (s *Server) err(msg string, err error) error {
