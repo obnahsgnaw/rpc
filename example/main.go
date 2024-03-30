@@ -5,13 +5,14 @@ import (
 	"github.com/obnahsgnaw/application/endtype"
 	"github.com/obnahsgnaw/application/pkg/logging/logger"
 	"github.com/obnahsgnaw/application/pkg/url"
+	"github.com/obnahsgnaw/application/service/regCenter"
 	"github.com/obnahsgnaw/rpc"
 	"time"
 )
 
 func main() {
+	r, _ := regCenter.NewEtcdRegister([]string{"127.0.0.1:2379"}, time.Second*5)
 	app := application.New(
-		application.NewCluster("dev", "Dev"),
 		"demo",
 		application.Debug(func() bool {
 			return true
@@ -24,7 +25,7 @@ func main() {
 			Level:      "debug",
 			TraceLevel: "error",
 		}),
-		application.EtcdRegister([]string{"127.0.0.1:2379"}, time.Second*5),
+		application.Register(r, 5),
 	)
 	defer app.Release()
 
@@ -36,8 +37,8 @@ func main() {
 		"auth",
 		"auth",
 		endtype.Backend,
+		nil, // rpc.NewPServer("", "")
 		//rpc.RegEnable(),
-		//rpc.Parent(rpc.NewPServer("", "")),
 		//rpc.IgLrClose(),
 	)
 	app.AddServer(s)

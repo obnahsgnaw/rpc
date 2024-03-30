@@ -6,5 +6,5 @@ import (
 )
 
 func NewListener(host url.Host) (*listener.PortedListener, error) {
-	return listener.Default(host)
+	return listener.Default(host.Ip, host.Port)
 }
