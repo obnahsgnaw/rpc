@@ -20,23 +20,23 @@ import (
 
 // Server RPC server
 type Server struct {
-	id         string
-	name       string
-	app        *application.Application
-	endType    endtype.EndType
-	serverType servertype.ServerType
-	server     *rpcserver.Server
-	manager    *rpcclient.Manager
-	lr         *listener.PortedListener
-	logger     *zap.Logger
-	logCnf     *logger.Config
-	pServer    *PServer
-	services   []ServiceInfo
-	regInfos   map[string]*regCenter.RegInfo
-	errs       []error
-	regAble    bool
-	lrIgClose  bool
-	lrIgServe  bool
+	app           *application.Application
+	id            string
+	name          string
+	endType       endtype.EndType
+	serverType    servertype.ServerType
+	server        *rpcserver.Server
+	clientManager *rpcclient.Manager
+	lsNer         *listener.PortedListener
+	logger        *zap.Logger
+	logCnf        *logger.Config
+	pServer       *PServer
+	services      []ServiceInfo
+	regInfos      map[string]*regCenter.RegInfo
+	errs          []error
+	regAble       bool
+	lrIgClose     bool
+	lrIgServe     bool
 }
 
 // ServiceInfo rpc service provider
@@ -45,20 +45,22 @@ type ServiceInfo struct {
 	Impl interface{}
 }
 
-func New(app *application.Application, lr *listener.PortedListener, id, name string, et endtype.EndType, options ...Option) *Server {
+func New(app *application.Application, lr *listener.PortedListener, id, name string, et endtype.EndType, ps *PServer, options ...Option) *Server {
 	s := &Server{
-		id:         id,
-		name:       name,
-		app:        app,
-		endType:    et,
-		serverType: servertype.Rpc,
-		lr:         lr,
-		regInfos:   make(map[string]*regCenter.RegInfo),
+		app:           app,
+		id:            id,
+		name:          name,
+		endType:       et,
+		serverType:    servertype.Rpc,
+		lsNer:         lr,
+		regInfos:      make(map[string]*regCenter.RegInfo),
+		pServer:       ps,
+		clientManager: rpcclient.NewManager(),
 	}
 	if s.id == "" || s.name == "" {
 		s.addErr(s.err("id or name invalid", nil))
 	}
-	with(s, options...)
+	s.With(options...)
 	s.initLogger()
 	s.server = rpcserver.New(lr, s.logger)
 	s.server.RegisterAfterHandler(func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, resp interface{}, err error) {
@@ -68,8 +70,7 @@ func New(app *application.Application, lr *listener.PortedListener, id, name str
 			s.logger.Debug(utils.ToStr("rpc serve[", info.FullMethod, "] success"), zap.Any("req", req), zap.Any("resp", resp))
 		}
 	})
-	s.manager = rpcclient.NewManager()
-	s.manager.RegisterAfterHandler(func(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, err error, opts ...grpc.CallOption) {
+	s.clientManager.RegisterAfterHandler(func(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, err error, opts ...grpc.CallOption) {
 		if err != nil {
 			s.logger.Error(utils.ToStr("rpc call[", method, "] failed, ", err.Error()), zap.Any("req", req), zap.Any("resp", reply))
 		} else {
@@ -78,6 +79,14 @@ func New(app *application.Application, lr *listener.PortedListener, id, name str
 	})
 	s.AddRegInfo(id, name, s.pServer)
 	return s
+}
+
+func (s *Server) With(options ...Option) {
+	for _, o := range options {
+		if o != nil {
+			o(s)
+		}
+	}
 }
 
 // ID return the server id
@@ -109,7 +118,7 @@ func (s *Server) Release() {
 			})
 		}
 	}
-	s.manager.Release()
+	s.clientManager.Release()
 	s.logger.Info("released")
 	_ = s.logger.Sync()
 }
@@ -158,10 +167,10 @@ func (s *Server) Run(failedCb func(error)) {
 		go func() {
 			defer func() {
 				if !s.lrIgClose {
-					s.lr.Close()
+					s.lsNer.Close()
 				}
 			}()
-			if err := s.lr.Serve(); err != nil {
+			if err := s.lsNer.Serve(); err != nil {
 				failedCb(err)
 			}
 		}()
@@ -171,7 +180,10 @@ func (s *Server) Run(failedCb func(error)) {
 
 // Host return the server host
 func (s *Server) Host() url.Host {
-	return s.server.Listener().Host()
+	return url.Host{
+		Ip:   s.server.Listener().Ip(),
+		Port: s.server.Listener().Port(),
+	}
 }
 
 func (s *Server) Listener() *listener.PortedListener {
@@ -185,7 +197,7 @@ func (s *Server) AddRegInfo(id, name string, parent *PServer) {
 		st = parent.st.String()
 	}
 	s.regInfos[id] = &regCenter.RegInfo{
-		AppId:   s.app.ID(),
+		AppId:   s.app.Cluster().Id(),
 		RegType: regtype.Rpc,
 		ServerInfo: regCenter.ServerInfo{
 			Id:      id,
@@ -193,8 +205,8 @@ func (s *Server) AddRegInfo(id, name string, parent *PServer) {
 			Type:    st,
 			EndType: s.endType.String(),
 		},
-		Host:      s.server.Listener().Host().String(),
-		Val:       s.server.Listener().Host().String(),
+		Host:      s.server.Listener().Host(),
+		Val:       s.server.Listener().Host(),
 		Ttl:       s.app.RegTtl(),
 		KeyPreGen: regCenter.DefaultRegKeyPrefixGenerator(),
 	}
@@ -210,9 +222,9 @@ func (s *Server) RegInfo() map[string]*regCenter.RegInfo {
 	return s.regInfos
 }
 
-// Manager return rpc manager
+// Manager return rpc clientManager
 func (s *Server) Manager() *rpcclient.Manager {
-	return s.manager
+	return s.clientManager
 }
 
 // Logger return the logger
@@ -243,10 +255,10 @@ func (s *Server) watch(register regCenter.Register) (err error) {
 			addr := segments[len(segments)-1]
 			if isDel {
 				s.logger.Debug(utils.ToStr("rpc[", module, "] leaved"))
-				s.manager.Rm(rpcclient.Module(module), addr)
+				s.clientManager.Rm(rpcclient.Module(module), addr)
 			} else {
 				s.logger.Debug(utils.ToStr("rpc[", module, "] added"))
-				s.manager.Add(rpcclient.Module(module), addr)
+				s.clientManager.Add(rpcclient.Module(module), addr)
 			}
 		})
 	}

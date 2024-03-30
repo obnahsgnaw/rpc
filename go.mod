@@ -3,10 +3,10 @@ module github.com/obnahsgnaw/rpc
 go 1.19
 
 require (
-	github.com/obnahsgnaw/application v0.16.12
-	github.com/obnahsgnaw/http v0.1.11
+	github.com/obnahsgnaw/application v0.17.4
+	github.com/obnahsgnaw/http v0.2.3
 	go.uber.org/zap v1.23.0
-	google.golang.org/grpc v1.55.0
+	google.golang.org/grpc v1.62.1
 )
 
 require (
@@ -21,10 +21,12 @@ require (
 	go.etcd.io/etcd/client/v3 v3.5.9 // indirect
 	go.uber.org/atomic v1.9.0 // indirect
 	go.uber.org/multierr v1.7.0 // indirect
-	golang.org/x/net v0.10.0 // indirect
-	golang.org/x/sys v0.8.0 // indirect
-	golang.org/x/text v0.9.0 // indirect
-	google.golang.org/genproto v0.0.0-20230410155749-daa745c078e1 // indirect
-	google.golang.org/protobuf v1.30.0 // indirect
+	golang.org/x/net v0.22.0 // indirect
+	golang.org/x/sys v0.18.0 // indirect
+	golang.org/x/text v0.14.0 // indirect
+	google.golang.org/genproto v0.0.0-20240123012728-ef4313101c80 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20240123012728-ef4313101c80 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20240123012728-ef4313101c80 // indirect
+	google.golang.org/protobuf v1.33.0 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 )
