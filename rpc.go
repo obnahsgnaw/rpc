@@ -35,8 +35,6 @@ type Server struct {
 	regInfos      map[string]*regCenter.RegInfo
 	errs          []error
 	regAble       bool
-	lrIgClose     bool
-	lrIgServe     bool
 }
 
 // ServiceInfo rpc service provider
@@ -160,21 +158,17 @@ func (s *Server) Run(failedCb func(error)) {
 	}
 	s.logger.Info("register initialized")
 	s.logger.Info("initialized")
-	s.server.SyncStart(func(err error) {
+	s.server.SyncStart(s.id, func(err error) {
 		failedCb(s.err("run failed, err="+err.Error(), nil))
 	})
-	if !s.lrIgServe {
-		go func() {
-			defer func() {
-				if !s.lrIgClose {
-					s.lsNer.Close()
-				}
-			}()
-			if err := s.lsNer.Serve(); err != nil {
-				failedCb(err)
-			}
+	go func() {
+		defer func() {
+			s.lsNer.CloseWithKey(s.id)
 		}()
-	}
+		if err := s.lsNer.ServeWithKey(s.id); err != nil {
+			failedCb(err)
+		}
+	}()
 	s.logger.Info(utils.ToStr("server[", s.Host().String(), "] listen and serving..."))
 }
 

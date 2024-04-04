@@ -17,6 +17,7 @@ type Server struct {
 	beforeInterceptors []func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo) error
 	afterHandlers      []func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, resp interface{}, err error)
 	services           []rpcService
+	startKey           string
 }
 
 type rpcService struct {
@@ -71,27 +72,38 @@ func (s *Server) RegisterAfterHandler(h func(ctx context.Context, req interface{
 	}
 }
 
-func (s *Server) Start() error {
+func (s *Server) Start(key string) error {
+	if s.startKey != "" {
+		return nil
+	}
 	s.init()
 	l := s.listener.GrpcListener()
 	l = newNoCl(l)
-	return s.server.Serve(l)
+	err := s.server.Serve(l)
+	if err == nil {
+		s.startKey = key
+	}
+	return err
 }
 
-func (s *Server) SyncStart(cb func(err error)) {
+func (s *Server) SyncStart(key string, cb func(err error)) {
 	go func(rs *Server) {
-		defer rs.Close()
-		if err := rs.Start(); err != nil {
+		defer rs.Close(key)
+		if err := rs.Start(key); err != nil {
 			cb(err)
 			return
 		}
 	}(s)
 }
 
-func (s *Server) Close() {
+func (s *Server) Close(key string) {
+	if key != s.startKey {
+		return
+	}
 	if s.server != nil {
 		s.server.GracefulStop()
 	}
+	s.startKey = ""
 }
 
 func (s *Server) Addr() string {

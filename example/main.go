@@ -39,7 +39,6 @@ func main() {
 		endtype.Backend,
 		nil, // rpc.NewPServer("", "")
 		//rpc.RegEnable(),
-		//rpc.IgLrClose(),
 	)
 	app.AddServer(s)
 	app.Run(func(err error) {
