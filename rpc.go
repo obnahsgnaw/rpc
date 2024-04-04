@@ -35,6 +35,7 @@ type Server struct {
 	regInfos      map[string]*regCenter.RegInfo
 	errs          []error
 	regAble       bool
+	running       bool
 }
 
 // ServiceInfo rpc service provider
@@ -119,10 +120,14 @@ func (s *Server) Release() {
 	s.clientManager.Release()
 	s.logger.Info("released")
 	_ = s.logger.Sync()
+	s.running = false
 }
 
 // Run server
 func (s *Server) Run(failedCb func(error)) {
+	if s.running {
+		return
+	}
 	if len(s.errs) > 0 {
 		failedCb(s.errs[0])
 		return
@@ -170,6 +175,7 @@ func (s *Server) Run(failedCb func(error)) {
 		}
 	}()
 	s.logger.Info(utils.ToStr("server[", s.Host().String(), "] listen and serving..."))
+	s.running = true
 }
 
 // Host return the server host
