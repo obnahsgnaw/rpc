@@ -269,9 +269,9 @@ func (s *Server) initLogger() {
 	var name string
 	s.logCnf = s.app.LogConfig()
 	if s.pServer != nil {
-		name = utils.ToStr(s.pServer.st.String(), "-", s.serverType.String(), "-", s.endType.String(), "-", s.pServer.id)
+		name = utils.ToStr(s.pServer.id, "-", s.endType.String(), "-", s.pServer.st.String(), "-", s.serverType.String())
 	} else {
-		name = utils.ToStr(s.serverType.String(), "-", s.endType.String(), "-", s.id)
+		name = utils.ToStr(s.id, "-", s.endType.String(), "-", s.serverType.String())
 	}
 	s.logger = s.app.Logger().Named(name)
 }
