@@ -18,8 +18,8 @@ github.com/google/go-cmp v0.5.5/go.mod h1:v8dTdLbMG2kIc/vJvl+f65V22dbkXbowE6jgT/
 github.com/google/go-cmp v0.6.0 h1:ofyhxvXcZhMsU5ulbFiLKl/XBFqE1GSq7atu8tAmTRI=
 github.com/kisielk/errcheck v1.5.0/go.mod h1:pFxgyoBC7bSaBwPgfKdkLd5X25qrDl4LWUI2bnpBCr8=
 github.com/kisielk/gotool v1.0.0/go.mod h1:XhKaO+MFFWcvkIS/tQcRk01m1F5IRFswLeQ+oQHNcck=
-github.com/obnahsgnaw/application v0.17.7 h1:Sh29juHc7Ki1qevzVuzD/hxT6uvSIXYPTYt/6De0eqc=
-github.com/obnahsgnaw/application v0.17.7/go.mod h1:qb1XoqG6RtZPeg7yioOgAYbR209jQR9RwjvbnUgL2RY=
+github.com/obnahsgnaw/application v0.17.8 h1:jUNm10e3UmUDBGP4NdDfod3gcfkqmT3NGarnNPUSL8s=
+github.com/obnahsgnaw/application v0.17.8/go.mod h1:qb1XoqG6RtZPeg7yioOgAYbR209jQR9RwjvbnUgL2RY=
 github.com/obnahsgnaw/http v0.2.6 h1:BiDvpM9kBU09fs42vNif9gOKW6yRrosqi3aOXcShg3U=
 github.com/obnahsgnaw/http v0.2.6/go.mod h1:Q2hcEpUDFA/7vlAsyL8vGTQgZmx30Ihz9HFl6SfQ0Wg=
 github.com/pkg/errors v0.8.1 h1:iURUrRGxPUNPdy5/HRSm+Yj6okJ6UtLINN0Q9M4+h3I=
