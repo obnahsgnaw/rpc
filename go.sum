@@ -20,8 +20,8 @@ github.com/kisielk/errcheck v1.5.0/go.mod h1:pFxgyoBC7bSaBwPgfKdkLd5X25qrDl4LWUI
 github.com/kisielk/gotool v1.0.0/go.mod h1:XhKaO+MFFWcvkIS/tQcRk01m1F5IRFswLeQ+oQHNcck=
 github.com/obnahsgnaw/application v0.17.8 h1:jUNm10e3UmUDBGP4NdDfod3gcfkqmT3NGarnNPUSL8s=
 github.com/obnahsgnaw/application v0.17.8/go.mod h1:qb1XoqG6RtZPeg7yioOgAYbR209jQR9RwjvbnUgL2RY=
-github.com/obnahsgnaw/http v0.2.7 h1:QZsobk0ZPpo4Jw3wwug7shE3nF8SOKB+Kq+ztc7Bv5c=
-github.com/obnahsgnaw/http v0.2.7/go.mod h1:Q2hcEpUDFA/7vlAsyL8vGTQgZmx30Ihz9HFl6SfQ0Wg=
+github.com/obnahsgnaw/http v0.2.8 h1:x7LGUJu2kplb0N29CmcyJQEBqF5tVPlaKTS9YxcuG9w=
+github.com/obnahsgnaw/http v0.2.8/go.mod h1:Q2hcEpUDFA/7vlAsyL8vGTQgZmx30Ihz9HFl6SfQ0Wg=
 github.com/pkg/errors v0.8.1 h1:iURUrRGxPUNPdy5/HRSm+Yj6okJ6UtLINN0Q9M4+h3I=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=

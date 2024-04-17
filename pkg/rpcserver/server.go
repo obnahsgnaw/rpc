@@ -8,9 +8,11 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"strconv"
+	"sync"
 )
 
 type Server struct {
+	lc                 sync.Mutex
 	server             *grpc.Server
 	listener           *listener.PortedListener
 	logger             *zap.Logger
@@ -73,15 +75,18 @@ func (s *Server) RegisterAfterHandler(h func(ctx context.Context, req interface{
 }
 
 func (s *Server) Start(key string) error {
+	s.lc.Lock()
+	defer s.lc.Unlock()
 	if s.startKey != "" {
 		return nil
 	}
+	s.startKey = key
 	s.init()
 	l := s.listener.GrpcListener()
 	l = newNoCl(l)
 	err := s.server.Serve(l)
-	if err == nil {
-		s.startKey = key
+	if err != nil {
+		s.startKey = ""
 	}
 	return err
 }
