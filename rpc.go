@@ -84,29 +84,25 @@ func New(app *application.Application, lr *listener.PortedListener, id, name str
 		rqId, rqFrom, rqTo := getClientMdRqIdAndFromTo(ctx)
 		desc := utils.ToStr("rq-id:", rqId, " from ", rqFrom, " to call ", rqTo, ".", method)
 		if err != nil {
-			s.errLogger.Printf("[ %s ] - %s %s %s %s %s %v %v %s\n",
+			s.errLogger.Printf("[ %s ] - %s %s %s %s %s %s\n",
 				time.Now().Format(time.RFC3339),
 				rqId,
+				s.name,
 				rqFrom,
 				rqTo,
 				method,
-				s.name,
-				req,
-				reply,
 				err.Error(),
 			)
 			s.logger.Warn(utils.ToStr("rpc call[", desc, "] failed, ", err.Error()), zap.String("rq_from", rqFrom), zap.String("rq_to", rqTo), zap.String("rq_id", rqId), zap.Any("req", req), zap.Any("resp", reply))
 		} else {
 			if s.accessWriter != nil {
-				_, _ = fmt.Fprint(s.accessWriter, fmt.Sprintf("[ %s ] - %s %s %s %s %s %v %v\n",
+				_, _ = fmt.Fprint(s.accessWriter, fmt.Sprintf("[ %s ] - %s %s %s %s %s\n",
 					time.Now().Format(time.RFC3339),
 					rqId,
+					s.name,
 					rqFrom,
 					rqTo,
 					method,
-					s.name,
-					req,
-					reply,
 				))
 			}
 			s.logger.Debug(utils.ToStr("rpc call[", desc, "] success"), zap.String("rq_from", rqFrom), zap.String("rq_to", rqTo), zap.String("rq_id", rqId), zap.Any("req", req), zap.Any("resp", reply))
