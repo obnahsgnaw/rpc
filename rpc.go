@@ -16,7 +16,6 @@ import (
 	"github.com/obnahsgnaw/rpc/pkg/rpcserver"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/metadata"
 	"io"
 	"log"
 	"strings"
@@ -71,41 +70,26 @@ func New(app *application.Application, lr *listener.PortedListener, id, name str
 	s.With(options...)
 	s.initLogger()
 	s.server = rpcserver.New(lr, s.logger)
-	s.server.RegisterAfterHandler(func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, resp interface{}, err error) {
-		rqId, rqFrom, rqTo := getServerMdRqIdAndFromTo(ctx)
-		desc := utils.ToStr("rq-id:", rqId, " from ", rqFrom, " to call ", rqTo, ".", info.FullMethod)
+	s.server.RegisterAfterHandler(func(ctx context.Context, head rpcserver.Header, req interface{}, info *grpc.UnaryServerInfo, resp interface{}, err error) {
+		desc := utils.ToStr("rq-id:", head.RqId, " from ", head.From, " to call ", head.To, ".", info.FullMethod)
 		if err != nil {
-			s.logger.Warn(utils.ToStr("rpc serve[", desc, "] failed, ", err.Error()), zap.String("rq_from", rqFrom), zap.String("rq_to", rqTo), zap.String("rq_id", rqId), zap.Any("req", req), zap.Any("resp", resp))
+			s.logger.Warn(utils.ToStr("rpc serve[", desc, "] failed, ", err.Error()), zap.String("rq_from", head.From), zap.String("rq_to", head.To), zap.String("rq_id", head.AppId), zap.Any("req", req), zap.Any("resp", resp))
 		} else {
-			s.logger.Debug(utils.ToStr("rpc serve[", desc, "] success"), zap.String("rq_from", rqFrom), zap.String("rq_to", rqTo), zap.String("rq_id", rqId), zap.Any("req", req), zap.Any("resp", resp))
+			s.logger.Debug(utils.ToStr("rpc serve[", desc, "] success"), zap.String("rq_from", head.From), zap.String("rq_to", head.To), zap.String("rq_id", head.RqId), zap.Any("req", req), zap.Any("resp", resp))
 		}
 	})
-	s.clientManager.RegisterAfterHandler(func(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, err error, opts ...grpc.CallOption) {
-		rqId, rqFrom, rqTo := getClientMdRqIdAndFromTo(ctx)
-		desc := utils.ToStr("rq-id:", rqId, " from ", rqFrom, " to call ", rqTo, ".", method)
+	s.clientManager.RegisterAfterHandler(func(ctx context.Context, head rpcclient.Header, method string, req, reply interface{}, cc *grpc.ClientConn, err error, opts ...grpc.CallOption) {
+		desc := utils.ToStr("rq-id:", head.RqId, " from ", head.From, " to call ", head.To, ".", method)
 		if err != nil {
-			s.errLogger.Printf("[ %s ] - %s %s %s %s %s %s\n",
-				time.Now().Format(time.RFC3339),
-				rqId,
-				s.name,
-				rqFrom,
-				rqTo,
-				method,
-				err.Error(),
-			)
-			s.logger.Warn(utils.ToStr("rpc call[", desc, "] failed, ", err.Error()), zap.String("rq_from", rqFrom), zap.String("rq_to", rqTo), zap.String("rq_id", rqId), zap.Any("req", req), zap.Any("resp", reply))
+			if s.errLogger != nil {
+				s.errLogger.Printf(utils.ToStr("[ ", time.Now().Format(time.RFC3339), " ] - ", head.RqId, " ", s.name, " RPC ", head.From, " ", head.To, " ", method, " ", err.Error(), "\n"))
+			}
+			s.logger.Warn(utils.ToStr("rpc call[", desc, "] failed, ", err.Error()), zap.String("rq_from", head.From), zap.String("rq_to", head.To), zap.String("rq_id", head.RqId), zap.Any("req", req), zap.Any("resp", reply))
 		} else {
 			if s.accessWriter != nil {
-				_, _ = fmt.Fprint(s.accessWriter, fmt.Sprintf("[ %s ] - %s %s %s %s %s\n",
-					time.Now().Format(time.RFC3339),
-					rqId,
-					s.name,
-					rqFrom,
-					rqTo,
-					method,
-				))
+				_, _ = fmt.Fprint(s.accessWriter, utils.ToStr("[ ", time.Now().Format(time.RFC3339), " ] - ", head.RqId, " ", s.name, " RPC ", head.From, " ", head.To, " ", method, "\n"))
 			}
-			s.logger.Debug(utils.ToStr("rpc call[", desc, "] success"), zap.String("rq_from", rqFrom), zap.String("rq_to", rqTo), zap.String("rq_id", rqId), zap.Any("req", req), zap.Any("resp", reply))
+			s.logger.Debug(utils.ToStr("rpc call[", desc, "] success"), zap.String("rq_from", head.From), zap.String("rq_to", head.To), zap.String("rq_id", head.To), zap.Any("req", req), zap.Any("resp", reply))
 		}
 	})
 	s.AddRegInfo(id, name, s.pServer)
@@ -316,44 +300,4 @@ func (s *Server) addErr(err error) {
 	if err != nil {
 		s.errs = append(s.errs, err)
 	}
-}
-
-func getServerMdRqIdAndFromTo(ctx context.Context) (string, string, string) {
-	var rqId, rqFrom, rqTo string
-	md, ok := metadata.FromIncomingContext(ctx)
-	if ok {
-		rqIds := md.Get("rq_id")
-		if len(rqIds) > 0 {
-			rqId = rqIds[0]
-		}
-		rqFroms := md.Get("rq_from")
-		if len(rqFroms) > 0 {
-			rqFrom = rqFroms[0]
-		}
-		rqTos := md.Get("rq_to")
-		if len(rqTos) > 0 {
-			rqTo = rqTos[0]
-		}
-	}
-	return rqId, rqFrom, rqTo
-}
-
-func getClientMdRqIdAndFromTo(ctx context.Context) (string, string, string) {
-	var rqId, rqFrom, rqTo string
-	md, ok := metadata.FromOutgoingContext(ctx)
-	if ok {
-		rqIds := md.Get("rq_id")
-		if len(rqIds) > 0 {
-			rqId = rqIds[0]
-		}
-		rqFroms := md.Get("rq_from")
-		if len(rqFroms) > 0 {
-			rqFrom = rqFroms[0]
-		}
-		rqTos := md.Get("rq_to")
-		if len(rqTos) > 0 {
-			rqTo = rqTos[0]
-		}
-	}
-	return rqId, rqFrom, rqTo
 }

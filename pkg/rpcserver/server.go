@@ -7,19 +7,32 @@ import (
 	"github.com/obnahsgnaw/http/listener"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
 	"strconv"
 	"sync"
 )
+
+type BeforeInterceptor func(ctx context.Context, head Header, req interface{}, info *grpc.UnaryServerInfo) error
+
+type AfterHandler func(ctx context.Context, head Header, req interface{}, info *grpc.UnaryServerInfo, resp interface{}, err error)
 
 type Server struct {
 	lc                 sync.Mutex
 	server             *grpc.Server
 	listener           *listener.PortedListener
 	logger             *zap.Logger
-	beforeInterceptors []func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo) error
-	afterHandlers      []func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, resp interface{}, err error)
+	beforeInterceptors []BeforeInterceptor
+	afterHandlers      []AfterHandler
 	services           []rpcService
 	startKey           string
+}
+
+type Header struct {
+	RqId   string
+	From   string
+	To     string
+	AppId  string
+	UserId string
 }
 
 type rpcService struct {
@@ -40,14 +53,15 @@ func New(lr *listener.PortedListener, l *zap.Logger) *Server {
 				s.logger.Error("handle failed, err=" + err1 + ", stack=" + stack)
 			}
 		})
+		head := s.parseHeader(ctx)
 		for _, h := range s.beforeInterceptors {
-			if err = h(ctx, req, info); err != nil {
+			if err = h(ctx, head, req, info); err != nil {
 				return
 			}
 		}
 		resp, err = handler(ctx, req)
 		for _, h := range s.afterHandlers {
-			h(ctx, req, info, resp, err)
+			h(ctx, head, req, info, resp, err)
 		}
 		return
 	}))
@@ -62,13 +76,13 @@ func (s *Server) Listener() *listener.PortedListener {
 	return s.listener
 }
 
-func (s *Server) RegisterBeforeInterceptor(i func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo) error) {
+func (s *Server) RegisterBeforeInterceptor(i BeforeInterceptor) {
 	if i != nil {
 		s.beforeInterceptors = append(s.beforeInterceptors)
 	}
 }
 
-func (s *Server) RegisterAfterHandler(h func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, resp interface{}, err error)) {
+func (s *Server) RegisterAfterHandler(h AfterHandler) {
 	if h != nil {
 		s.afterHandlers = append(s.afterHandlers, h)
 	}
@@ -122,5 +136,39 @@ func (s *Server) Port() int {
 func (s *Server) init() {
 	for _, h := range s.services {
 		s.server.RegisterService(&h.desc, h.serv)
+	}
+}
+
+func (s *Server) parseHeader(ctx context.Context) Header {
+	var rqId, rqFrom, rqTo, appId, userId string
+	md, ok := metadata.FromIncomingContext(ctx)
+	if ok {
+		rqIds := md.Get("rq_id")
+		if len(rqIds) > 0 {
+			rqId = rqIds[0]
+		}
+		rqFroms := md.Get("rq_from")
+		if len(rqFroms) > 0 {
+			rqFrom = rqFroms[0]
+		}
+		rqTos := md.Get("rq_to")
+		if len(rqTos) > 0 {
+			rqTo = rqTos[0]
+		}
+		appIds := md.Get("app_id")
+		if len(appIds) > 0 {
+			appId = appIds[0]
+		}
+		userIds := md.Get("user_id")
+		if len(userIds) > 0 {
+			userId = userIds[0]
+		}
+	}
+	return Header{
+		RqId:   rqId,
+		From:   rqFrom,
+		To:     rqTo,
+		AppId:  appId,
+		UserId: userId,
 	}
 }

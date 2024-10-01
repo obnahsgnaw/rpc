@@ -7,13 +7,22 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
+	"google.golang.org/grpc/metadata"
 	"sync"
 	"time"
 )
 
-type BeforeInterceptor func(ctx context.Context, method string, req interface{}, cc *grpc.ClientConn, opts ...grpc.CallOption) error
+type BeforeInterceptor func(ctx context.Context, head Header, method string, req interface{}, cc *grpc.ClientConn, opts ...grpc.CallOption) error
 
-type AfterHandler func(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, err error, opts ...grpc.CallOption)
+type AfterHandler func(ctx context.Context, head Header, method string, req, reply interface{}, cc *grpc.ClientConn, err error, opts ...grpc.CallOption)
+
+type Header struct {
+	RqId   string
+	From   string
+	To     string
+	AppId  string
+	UserId string
+}
 
 // Manager rpc server addr manager
 type Manager struct {
@@ -21,11 +30,12 @@ type Manager struct {
 	addrMap            map[Module]Addr
 	beforeInterceptors []BeforeInterceptor
 	afterHandlers      []AfterHandler
+	callTtl            time.Duration
 }
 
 // NewManager return a new addr manager
 func NewManager() *Manager {
-	return &Manager{addrMap: make(map[Module]Addr)}
+	return &Manager{addrMap: make(map[Module]Addr), callTtl: time.Second * 3}
 }
 
 // Add add a module server addr
@@ -115,14 +125,15 @@ func (m *Manager) newClient(server string) (*grpc.ClientConn, error) {
 			},
 		),
 		grpc.WithUnaryInterceptor(func(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+			header := m.parseHeader(ctx)
 			for _, h := range m.beforeInterceptors {
-				if err := h(ctx, method, req, cc, opts...); err != nil {
+				if err := h(ctx, header, method, req, cc, opts...); err != nil {
 					return err
 				}
 			}
 			err := invoker(ctx, method, req, reply, cc, opts...)
 			for _, h := range m.afterHandlers {
-				h(ctx, method, req, reply, cc, err, opts...)
+				h(ctx, header, method, req, reply, cc, err, opts...)
 			}
 			return err
 		}),
@@ -137,5 +148,93 @@ func (m *Manager) Release() {
 				_ = ccc.Close()
 			}
 		}
+	}
+}
+
+func (m *Manager) Call(ctx context.Context, from, to, rqId, appid, uid string, cb func(context.Context, *grpc.ClientConn) error) error {
+	toM := Module(to)
+	addr := m.GetRand(toM)
+	if addr == "" {
+		return NewRpsError("no rpc addr")
+	}
+	return m.HostCall(ctx, addr, 1, from, to, rqId, appid, uid, cb)
+}
+
+func (m *Manager) HostCall(ctx context.Context, addr string, flag int, from, to, rqId, appid, uid string, cb func(context.Context, *grpc.ClientConn) error) error {
+	cc, err := m.GetConn(Module(to), addr, flag)
+	if err != nil {
+		return NewRpsError("fetch client failed")
+	}
+
+	if cb == nil {
+		return NewRpsError("callback is nil")
+	}
+	ctx1, cl := context.WithTimeout(ctx, m.callTtl)
+	defer cl()
+
+	ctx1 = metadata.AppendToOutgoingContext(ctx1, "app_id", appid, "user_id", uid, "rq_id", rqId, "rq_type", "rpc", "rq_from", from, "rq_to", to)
+
+	if err = cb(ctx1, cc); err != nil {
+		var rqType string
+		md, ok := metadata.FromIncomingContext(ctx)
+		if ok {
+			rqIds := md.Get("rq_type")
+			if len(rqIds) > 0 {
+				rqType = rqIds[0]
+			}
+		}
+		if rqType == "" {
+			err = NewRpsError(err.Error())
+		}
+	}
+	return err
+}
+
+func (m *Manager) SetCallTtl(ttl time.Duration) {
+	if ttl < 10 {
+		ttl = time.Second * ttl
+	}
+	m.callTtl = ttl
+}
+
+func (m *Manager) IsRpsError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var rpcErr *RpsError
+	return errors.As(err, &rpcErr)
+}
+
+func (m *Manager) parseHeader(ctx context.Context) Header {
+	var rqId, rqFrom, rqTo, appId, userId string
+	md, ok := metadata.FromOutgoingContext(ctx)
+	if ok {
+		rqIds := md.Get("rq_id")
+		if len(rqIds) > 0 {
+			rqId = rqIds[0]
+		}
+		rqFroms := md.Get("rq_from")
+		if len(rqFroms) > 0 {
+			rqFrom = rqFroms[0]
+		}
+		rqTos := md.Get("rq_to")
+		if len(rqTos) > 0 {
+			rqTo = rqTos[0]
+		}
+		appIds := md.Get("app_id")
+		if len(appIds) > 0 {
+			appId = appIds[0]
+		}
+		userIds := md.Get("user_id")
+		if len(userIds) > 0 {
+			userId = userIds[0]
+		}
+	}
+	return Header{
+		RqId:   rqId,
+		From:   rqFrom,
+		To:     rqTo,
+		AppId:  appId,
+		UserId: userId,
 	}
 }
