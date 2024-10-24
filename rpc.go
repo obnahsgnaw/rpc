@@ -243,6 +243,11 @@ func (s *Server) Manager() *rpcclient.Manager {
 	return s.clientManager
 }
 
+// Server return rpc Server
+func (s *Server) Server() *rpcserver.Server {
+	return s.server
+}
+
 // Logger return the logger
 func (s *Server) Logger() *zap.Logger {
 	return s.logger
