@@ -1,4 +1,40 @@
 
+<a name="v0.6.14"></a>
+## [v0.6.14](https://8.140.161.172/wangsb/wgateway/compare/v0.6.13...v0.6.14) (2024-10-24)
+
+
+<a name="v0.6.13"></a>
+## [v0.6.13](https://8.140.161.172/wangsb/wgateway/compare/v0.6.12...v0.6.13) (2024-10-01)
+
+### Bug Fixes
+
+* **rpc server and client:** x
+
+
+<a name="v0.6.12"></a>
+## [v0.6.12](https://8.140.161.172/wangsb/wgateway/compare/v0.6.11...v0.6.12) (2024-09-29)
+
+### Bug Fixes
+
+* **x:** x
+
+
+<a name="v0.6.11"></a>
+## [v0.6.11](https://8.140.161.172/wangsb/wgateway/compare/v0.6.10...v0.6.11) (2024-09-29)
+
+### Features
+
+* **x:** x
+
+
+<a name="v0.6.10"></a>
+## [v0.6.10](https://8.140.161.172/wangsb/wgateway/compare/v0.6.9...v0.6.10) (2024-09-29)
+
+### Features
+
+* **rpc:** added rpc Call and added rq-id for log
+
+
 <a name="v0.6.9"></a>
 ## [v0.6.9](https://8.140.161.172/wangsb/wgateway/compare/v0.6.8...v0.6.9) (2024-05-23)
 
