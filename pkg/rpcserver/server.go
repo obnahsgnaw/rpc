@@ -25,6 +25,7 @@ type Server struct {
 	afterHandlers      []AfterHandler
 	services           []rpcService
 	startKey           string
+	errParser          func(err error) (code string, message string, statusCode string)
 }
 
 type Header struct {
@@ -60,6 +61,20 @@ func New(lr *listener.PortedListener, l *zap.Logger) *Server {
 			}
 		}
 		resp, err = handler(ctx, req)
+		if err != nil {
+			var code = "1"
+			var statusCode = "500"
+			var message = err.Error()
+			if s.errParser != nil {
+				code, message, statusCode = s.errParser(err)
+			}
+			err = grpc.SetHeader(ctx, metadata.New(map[string]string{
+				"err_code":    code,
+				"err_message": message,
+				"err_status":  statusCode,
+			}))
+			err = nil
+		}
 		for _, h := range s.afterHandlers {
 			h(ctx, head, req, info, resp, err)
 		}
@@ -171,4 +186,8 @@ func (s *Server) parseHeader(ctx context.Context) Header {
 		AppId:  appId,
 		UserId: userId,
 	}
+}
+
+func (s *Server) SetCustomErrorParser(f func(err error) (code string, message string, statusCode string)) {
+	s.errParser = f
 }

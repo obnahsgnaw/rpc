@@ -306,3 +306,11 @@ func (s *Server) addErr(err error) {
 		s.errs = append(s.errs, err)
 	}
 }
+
+func (s *Server) SetCustomErrorParser(f func(err error) (code string, message string, statusCode string)) {
+	s.server.SetCustomErrorParser(f)
+}
+
+func (s *Server) SetCustomErrorBuilder(f func(code, message, statusCode string) error) {
+	s.clientManager.SetCustomErrorBuilder(f)
+}

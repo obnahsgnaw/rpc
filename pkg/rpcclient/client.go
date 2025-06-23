@@ -31,6 +31,20 @@ type Manager struct {
 	beforeInterceptors []BeforeInterceptor
 	afterHandlers      []AfterHandler
 	callTtl            time.Duration
+	errBuilder         func(code, message, statusCode string) error
+}
+
+type RpcMetadata struct {
+	Header  metadata.MD
+	Trailer metadata.MD
+}
+
+func newRpcMetadataContext(ctx context.Context) context.Context {
+	return context.WithValue(ctx, "RpcMetadata", &RpcMetadata{})
+}
+
+func getRpcMetadataContext(ctx context.Context) *RpcMetadata {
+	return ctx.Value("RpcMetadata").(*RpcMetadata)
 }
 
 // NewManager return a new addr manager
@@ -131,6 +145,9 @@ func (m *Manager) newClient(server string) (*grpc.ClientConn, error) {
 					return err
 				}
 			}
+			mt := getRpcMetadataContext(ctx)
+			opts = append(opts, grpc.Header(&mt.Header))
+			opts = append(opts, grpc.Trailer(&mt.Trailer))
 			err := invoker(ctx, method, req, reply, cc, opts...)
 			for _, h := range m.afterHandlers {
 				h(ctx, header, method, req, reply, cc, err, opts...)
@@ -169,22 +186,38 @@ func (m *Manager) HostCall(ctx context.Context, addr string, flag int, from, to,
 	if cb == nil {
 		return NewRpsError("callback is nil")
 	}
-	ctx1, cl := context.WithTimeout(ctx, m.callTtl)
+	ctx1, cl := context.WithTimeout(newRpcMetadataContext(ctx), m.callTtl)
 	defer cl()
 
 	ctx1 = metadata.AppendToOutgoingContext(ctx1, "app_id", appid, "user_id", uid, "rq_id", rqId, "rq_type", "rpc", "rq_from", from, "rq_to", to)
 
 	if err = cb(ctx1, cc); err != nil {
-		var rqType string
-		md, ok := metadata.FromIncomingContext(ctx)
-		if ok {
-			rqIds := md.Get("rq_type")
-			if len(rqIds) > 0 {
-				rqType = rqIds[0]
+		err = NewRpsError(err.Error())
+	} else {
+		errCode := "1"
+		errStatus := "500"
+		errMessage := ""
+		mt := getRpcMetadataContext(ctx1)
+		if mt != nil {
+			errMessages := mt.Header.Get("err_message")
+			if len(errMessages) > 0 {
+				errMessage = errMessages[0]
+			}
+			errCodes := mt.Header.Get("err_code")
+			if len(errCodes) > 0 {
+				errCode = errCodes[0]
+			}
+			errStatuss := mt.Header.Get("err_status")
+			if len(errStatuss) > 0 {
+				errStatus = errStatuss[0]
 			}
 		}
-		if rqType == "" {
-			err = NewRpsError(err.Error())
+		if errMessage != "" {
+			if m.errBuilder != nil {
+				err = m.errBuilder(errCode, errMessage, errStatus)
+			} else {
+				err = errors.New(errMessage + "[" + errStatus + " " + errCode + "]")
+			}
 		}
 	}
 	return err
@@ -237,4 +270,8 @@ func (m *Manager) parseHeader(ctx context.Context) Header {
 		AppId:  appId,
 		UserId: userId,
 	}
+}
+
+func (m *Manager) SetCustomErrorBuilder(f func(code, message, statusCode string) error) {
+	m.errBuilder = f
 }
