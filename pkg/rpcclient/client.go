@@ -138,17 +138,47 @@ func (m *Manager) newClient(server string) (*grpc.ClientConn, error) {
 				PermitWithoutStream: true,
 			},
 		),
-		grpc.WithUnaryInterceptor(func(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+		grpc.WithUnaryInterceptor(func(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) (err error) {
+			var mt *RpcMetadata
+			defer func() {
+				if err == nil {
+					errCode := "1"
+					errStatus := "500"
+					errMessage := ""
+					if mt != nil {
+						errMessages := mt.Header.Get("err_message")
+						if len(errMessages) > 0 {
+							errMessage = errMessages[0]
+						}
+						errCodes := mt.Header.Get("err_code")
+						if len(errCodes) > 0 {
+							errCode = errCodes[0]
+						}
+						errStatuss := mt.Header.Get("err_status")
+						if len(errStatuss) > 0 {
+							errStatus = errStatuss[0]
+						}
+					}
+					if errMessage != "" {
+						if m.errBuilder != nil {
+							err = m.errBuilder(errCode, errMessage, errStatus)
+						} else {
+							err = errors.New(errMessage + "[" + errStatus + " " + errCode + "]")
+						}
+						err = NewCustomError(err)
+					}
+				}
+			}()
 			header := m.parseHeader(ctx)
 			for _, h := range m.beforeInterceptors {
-				if err := h(ctx, header, method, req, cc, opts...); err != nil {
-					return err
+				if err = h(ctx, header, method, req, cc, opts...); err != nil {
+					return
 				}
 			}
-			mt := getRpcMetadataContext(ctx)
+			mt = getRpcMetadataContext(ctx)
 			opts = append(opts, grpc.Header(&mt.Header))
 			opts = append(opts, grpc.Trailer(&mt.Trailer))
-			err := invoker(ctx, method, req, reply, cc, opts...)
+			err = invoker(ctx, method, req, reply, cc, opts...)
 			for _, h := range m.afterHandlers {
 				h(ctx, header, method, req, reply, cc, err, opts...)
 			}
@@ -177,6 +207,15 @@ func (m *Manager) Call(ctx context.Context, from, to, rqId, appid, uid string, c
 	return m.HostCall(ctx, addr, 1, from, to, rqId, appid, uid, cb)
 }
 
+func (m *Manager) ValCall(ctx context.Context, from, to, rqId, appid, uid string, cb func(context.Context, *grpc.ClientConn) (interface{}, error)) (interface{}, error) {
+	toM := Module(to)
+	addr := m.GetRand(toM)
+	if addr == "" {
+		return nil, NewRpsError("no rpc addr")
+	}
+	return m.HostValCall(ctx, addr, 1, from, to, rqId, appid, uid, cb)
+}
+
 func (m *Manager) HostCall(ctx context.Context, addr string, flag int, from, to, rqId, appid, uid string, cb func(context.Context, *grpc.ClientConn) error) error {
 	cc, err := m.GetConn(Module(to), addr, flag)
 	if err != nil {
@@ -191,36 +230,24 @@ func (m *Manager) HostCall(ctx context.Context, addr string, flag int, from, to,
 
 	ctx1 = metadata.AppendToOutgoingContext(ctx1, "app_id", appid, "user_id", uid, "rq_id", rqId, "rq_type", "rpc", "rq_from", from, "rq_to", to)
 
-	if err = cb(ctx1, cc); err != nil {
-		err = NewRpsError(err.Error())
-	} else {
-		errCode := "1"
-		errStatus := "500"
-		errMessage := ""
-		mt := getRpcMetadataContext(ctx1)
-		if mt != nil {
-			errMessages := mt.Header.Get("err_message")
-			if len(errMessages) > 0 {
-				errMessage = errMessages[0]
-			}
-			errCodes := mt.Header.Get("err_code")
-			if len(errCodes) > 0 {
-				errCode = errCodes[0]
-			}
-			errStatuss := mt.Header.Get("err_status")
-			if len(errStatuss) > 0 {
-				errStatus = errStatuss[0]
-			}
-		}
-		if errMessage != "" {
-			if m.errBuilder != nil {
-				err = m.errBuilder(errCode, errMessage, errStatus)
-			} else {
-				err = errors.New(errMessage + "[" + errStatus + " " + errCode + "]")
-			}
-		}
+	return cb(ctx1, cc)
+}
+
+func (m *Manager) HostValCall(ctx context.Context, addr string, flag int, from, to, rqId, appid, uid string, cb func(context.Context, *grpc.ClientConn) (interface{}, error)) (interface{}, error) {
+	cc, err := m.GetConn(Module(to), addr, flag)
+	if err != nil {
+		return nil, NewRpsError("fetch client failed")
 	}
-	return err
+
+	if cb == nil {
+		return nil, NewRpsError("callback is nil")
+	}
+	ctx1, cl := context.WithTimeout(newRpcMetadataContext(ctx), m.callTtl)
+	defer cl()
+
+	ctx1 = metadata.AppendToOutgoingContext(ctx1, "app_id", appid, "user_id", uid, "rq_id", rqId, "rq_type", "rpc", "rq_from", from, "rq_to", to)
+
+	return cb(ctx1, cc)
 }
 
 func (m *Manager) SetCallTtl(ttl time.Duration) {
@@ -236,6 +263,17 @@ func (m *Manager) IsRpsError(err error) bool {
 	}
 	var rpcErr *RpsError
 	return errors.As(err, &rpcErr)
+}
+
+func (m *Manager) IsCustomError(err error) *CustomError {
+	if err == nil {
+		return nil
+	}
+	var rpcErr *CustomError
+	if errors.As(err, &rpcErr) {
+		return rpcErr
+	}
+	return nil
 }
 
 func (m *Manager) parseHeader(ctx context.Context) Header {

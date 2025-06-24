@@ -54,6 +54,22 @@ func New(lr *listener.PortedListener, l *zap.Logger) *Server {
 				s.logger.Error("handle failed, err=" + err1 + ", stack=" + stack)
 			}
 		})
+		defer func() {
+			if err != nil {
+				var code = "1"
+				var statusCode = "500"
+				var message = err.Error()
+				if s.errParser != nil {
+					code, message, statusCode = s.errParser(err)
+				}
+				err = grpc.SetHeader(ctx, metadata.New(map[string]string{
+					"err_code":    code,
+					"err_message": message,
+					"err_status":  statusCode,
+				}))
+				err = nil
+			}
+		}()
 		head := s.parseHeader(ctx)
 		for _, h := range s.beforeInterceptors {
 			if err = h(ctx, head, req, info); err != nil {
@@ -61,20 +77,6 @@ func New(lr *listener.PortedListener, l *zap.Logger) *Server {
 			}
 		}
 		resp, err = handler(ctx, req)
-		if err != nil {
-			var code = "1"
-			var statusCode = "500"
-			var message = err.Error()
-			if s.errParser != nil {
-				code, message, statusCode = s.errParser(err)
-			}
-			err = grpc.SetHeader(ctx, metadata.New(map[string]string{
-				"err_code":    code,
-				"err_message": message,
-				"err_status":  statusCode,
-			}))
-			err = nil
-		}
 		for _, h := range s.afterHandlers {
 			h(ctx, head, req, info, resp, err)
 		}
